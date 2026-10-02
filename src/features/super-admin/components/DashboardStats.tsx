@@ -1,6 +1,12 @@
 import React from "react";
 import { Card } from "@/components/ui/Card";
-import { IconCoffee, IconCircleCheck, IconClock, IconAlertTriangle, IconCash } from "@tabler/icons-react";
+import {
+  IconCoffee,
+  IconCircleCheck,
+  IconClock,
+  IconAlertTriangle,
+  IconCash,
+} from "@tabler/icons-react";
 
 export interface DashboardStatsProps {
   totalCafes: number;
@@ -18,72 +24,32 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
   totalRevenue,
 }) => {
   const cards = [
+    { title: "Total cafes", value: totalCafes, detail: "All tenants", icon: IconCoffee },
+    { title: "Active", value: activeCafes, detail: "Operational", icon: IconCircleCheck },
+    { title: "Grace period", value: graceCafes, detail: "Expiring within 7 days", icon: IconClock },
+    { title: "Suspended", value: suspendedCafes, detail: "Access restricted", icon: IconAlertTriangle },
     {
-      title: "Total Cafés",
-      value: totalCafes,
-      label: "Registered Tenants",
-      icon: IconCoffee,
-      color: "var(--color-primary)",
-      indicatorBg: "bg-[var(--color-primary)]",
-    },
-    {
-      title: "Active",
-      value: activeCafes,
-      label: "Operational & Live",
-      icon: IconCircleCheck,
-      color: "var(--color-success)",
-      indicatorBg: "bg-[var(--color-success)]",
-    },
-    {
-      title: "Grace Period",
-      value: graceCafes,
-      label: "Expiring within 7 days",
-      icon: IconClock,
-      color: "var(--color-warning)",
-      indicatorBg: "bg-[var(--color-warning)]",
-    },
-    {
-      title: "Suspended",
-      value: suspendedCafes,
-      label: "Access Restricted",
-      icon: IconAlertTriangle,
-      color: "var(--color-danger)",
-      indicatorBg: "bg-[var(--color-danger)]",
-    },
-    {
-      title: "Offline Revenue",
-      value: `₹${(totalRevenue).toLocaleString("en-IN")}`,
-      label: "Recorded offline fees",
+      title: "Offline revenue",
+      value: `₹${totalRevenue.toLocaleString("en-IN")}`,
+      detail: "Recorded platform fees",
       icon: IconCash,
-      color: "var(--color-primary)",
-      indicatorBg: "bg-[var(--color-primary)]",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-      {cards.map((card, idx) => {
-        const IconComponent = card.icon;
-        return (
-          <Card key={idx} className="relative overflow-hidden p-4 border border-[var(--color-border)]">
-            <div className={`absolute top-0 left-0 bottom-0 w-1 ${card.indicatorBg}`} />
-            <div className="pl-1.5 flex flex-col justify-between h-full">
-              <div className="flex items-center justify-between text-[var(--color-muted)] mb-1">
-                <span className="text-[12px] font-semibold tracking-wide uppercase">
-                  {card.title}
-                </span>
-                <IconComponent className="w-4 h-4" style={{ color: card.color }} />
-              </div>
-              <div className="text-[28px] font-bold text-[var(--color-foreground)] tracking-tight leading-none my-1.5">
-                {card.value}
-              </div>
-              <div className="text-[11px] text-[var(--color-muted)] font-normal">
-                {card.label}
-              </div>
-            </div>
-          </Card>
-        );
-      })}
-    </div>
+    <section aria-label="Platform metrics" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      {cards.map(({ title, value, detail, icon: Icon }) => (
+        <Card key={title} className="min-w-0 p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="truncate text-xs font-medium text-[var(--color-muted)]">{title}</h2>
+            <Icon className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden="true" />
+          </div>
+          <p className="mt-2 text-2xl font-semibold leading-none tracking-tight text-[var(--color-foreground)] sm:text-[26px]">
+            {value}
+          </p>
+          <p className="mt-1.5 truncate text-[11px] text-[var(--color-muted)]">{detail}</p>
+        </Card>
+      ))}
+    </section>
   );
 };

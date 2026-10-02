@@ -8,6 +8,10 @@
 | `BETTER_AUTH_SECRET` | 32+ character random secret for signing session tokens | Generate with `openssl rand -base64 32` | **YES** |
 | `BETTER_AUTH_URL` | Base canonical application URL | `https://admin.upgradecafe.com` | **YES** |
 | `NEXT_PUBLIC_APP_URL` | Client-accessible URL for auth client | `https://admin.upgradecafe.com` | **YES** |
+| `BETTER_AUTH_API_KEY` | Better Auth Infrastructure API key used by the Dash plugin | Copy from your Better Auth Infrastructure project | Required to connect Dash |
+| `BETTER_AUTH_API_URL` | Optional Better Auth Infrastructure API endpoint override | Use the endpoint shown in your project settings | No |
+| `BETTER_AUTH_KV_URL` | Better Auth Infrastructure identify/KV endpoint for the server plugin | Use the identify endpoint shown in your project settings | No (recommended for Dash identification) |
+| `NEXT_PUBLIC_BETTER_AUTH_KV_URL` | Public identify/KV endpoint used by the browser Sentinel client | Use the identify endpoint shown in your project settings | No (recommended for browser identification) |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint for distributed rate limiting | `https://[project].upstash.io` | No (recommended for distributed limits) |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST bearer token | `AX...` | No (recommended for distributed limits) |
 | `R2_ACCOUNT_ID` | Cloudflare Account ID | `e2a4...` | No (required for real uploads) |

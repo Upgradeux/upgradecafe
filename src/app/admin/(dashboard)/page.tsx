@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AdminHeader } from "@/features/super-admin/components/AdminHeader";
 import { DashboardStats } from "@/features/super-admin/components/DashboardStats";
@@ -8,32 +8,41 @@ import { ExpiringCafesList } from "@/features/super-admin/components/ExpiringCaf
 import { PaymentForm } from "@/features/super-admin/components/PaymentForm";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { CafeStatusBadge } from "@/features/super-admin/components/CafeStatusBadge";
 import { CafeListItem } from "@/features/super-admin/services/cafe-admin.service";
 import { ActivityLogItem } from "@/features/super-admin/services/activity-admin.service";
-import {
-  IconCoffee,
-  IconHistory,
-  IconArrowUpRight,
-} from "@tabler/icons-react";
+import { IconCoffee, IconHistory, IconArrowUpRight } from "@tabler/icons-react";
+
+interface DashboardData {
+  cafeMetrics: {
+    totalCafes: number;
+    activeCafes: number;
+    graceCafes: number;
+    suspendedCafes: number;
+  };
+  recentlyAdded: CafeListItem[];
+  expiringSoon: CafeListItem[];
+  activity: ActivityLogItem[];
+  totalRevenue: number;
+}
+
+const initialData: DashboardData = {
+  cafeMetrics: { totalCafes: 0, activeCafes: 0, graceCafes: 0, suspendedCafes: 0 },
+  recentlyAdded: [],
+  expiringSoon: [],
+  activity: [],
+  totalRevenue: 0,
+};
 
 export default function AdminDashboardPage() {
-  const [activity, setActivity] = useState<ActivityLogItem[]>([]);
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [cafeMetrics, setCafeMetrics] = useState({ totalCafes: 0, activeCafes: 0, graceCafes: 0, suspendedCafes: 0 });
-  const [recentlyAdded, setRecentlyAdded] = useState<CafeListItem[]>([]);
-  const [expiringSoon, setExpiringSoon] = useState<CafeListItem[]>([]);
+  const [dashboard, setDashboard] = useState(initialData);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  // Payment Form Modal state
   const [selectedCafeForPayment, setSelectedCafeForPayment] = useState<CafeListItem | null>(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setIsLoading(true);
-
       const response = await fetch("/api/admin/dashboard", { cache: "no-store" });
       const result = await response.json();
       if (!response.ok || !result.success) {
@@ -41,177 +50,155 @@ export default function AdminDashboardPage() {
       }
 
       const data = result.data;
-      setCafeMetrics({
-        totalCafes: data.totalCafes,
-        activeCafes: data.activeCafes,
-        graceCafes: data.graceCafes,
-        suspendedCafes: data.suspendedCafes,
+      setDashboard({
+        cafeMetrics: {
+          totalCafes: data.totalCafes,
+          activeCafes: data.activeCafes,
+          graceCafes: data.graceCafes,
+          suspendedCafes: data.suspendedCafes,
+        },
+        recentlyAdded: data.recentlyAdded || [],
+        expiringSoon: data.expiringCafes || [],
+        activity: data.activity || [],
+        totalRevenue: data.totalRevenue || 0,
       });
-      setRecentlyAdded(data.recentlyAdded || []);
-      setExpiringSoon(data.expiringCafes || []);
-      setActivity(data.activity || []);
-      setTotalRevenue(data.totalRevenue || 0);
       setLoadError(null);
-    } catch (err) {
-      console.error("Failed to load dashboard data:", err);
-      setLoadError(err instanceof Error ? err.message : "Failed to load dashboard data.");
+    } catch (error) {
+      console.error("Failed to load dashboard data:", error);
+      setLoadError(error instanceof Error ? error.message : "Failed to load dashboard data.");
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
   }, []);
 
+  useEffect(() => {
+    void fetchDashboardData();
+  }, [fetchDashboardData]);
+
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
+    <div className="space-y-5">
       <AdminHeader
         title="Platform overview"
-        subtitle="Current café, subscription, payment, and activity data."
+        subtitle="Monitor cafes, subscriptions, payments, and recent activity."
       />
 
       {isLoading ? (
-        <div className="p-12 text-center text-xs text-[var(--color-muted)] border border-[var(--color-border)] rounded-[var(--radius-card)] bg-[var(--color-surface)]">
-          Loading platform metrics...
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-10 text-center text-sm text-[var(--color-muted)]">
+          Loading platform overview…
         </div>
       ) : loadError ? (
-        <div role="alert" className="rounded-md border border-[var(--color-danger)]/30 bg-[var(--color-danger-light)] p-4 text-sm text-[var(--color-danger)]">
+        <div role="alert" className="rounded-lg border border-[var(--color-danger)]/25 bg-[var(--color-danger-light)] p-4 text-sm text-[var(--color-danger)]">
           {loadError}
         </div>
       ) : (
         <>
-          {/* KPI Stats Block */}
           <DashboardStats
-            totalCafes={cafeMetrics.totalCafes}
-            activeCafes={cafeMetrics.activeCafes}
-            graceCafes={cafeMetrics.graceCafes}
-            suspendedCafes={cafeMetrics.suspendedCafes}
-            totalRevenue={totalRevenue}
+            totalCafes={dashboard.cafeMetrics.totalCafes}
+            activeCafes={dashboard.cafeMetrics.activeCafes}
+            graceCafes={dashboard.cafeMetrics.graceCafes}
+            suspendedCafes={dashboard.cafeMetrics.suspendedCafes}
+            totalRevenue={dashboard.totalRevenue}
           />
 
-      {/* 2-Column Operational Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recently Added Cafés */}
-        <Card className="border border-[var(--color-border)] h-full flex flex-col">
-          <CardHeader className="py-3.5 px-5 flex items-center justify-between border-b border-[var(--color-border-subtle)]">
-            <div className="flex items-center gap-2">
-              <IconCoffee className="w-4 h-4 text-[var(--color-primary)]" />
-              <CardTitle className="text-sm">Recently Added Cafés</CardTitle>
-            </div>
-            <Link
-              href="/admin/cafes"
-              className="text-xs text-[var(--color-primary)] hover:underline font-medium"
-            >
-              View all ({cafeMetrics.totalCafes})
-            </Link>
-          </CardHeader>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <Card className="min-w-0 overflow-hidden">
+              <CardHeader className="px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <IconCoffee className="h-4 w-4 shrink-0 text-neutral-500" aria-hidden="true" />
+                  <CardTitle className="text-sm">Recently added cafes</CardTitle>
+                </div>
+                <Link href="/admin/cafes" className="shrink-0 text-xs font-medium text-[var(--color-muted)] hover:text-[var(--color-foreground)]">
+                  View all <span className="tabular-nums">{dashboard.cafeMetrics.totalCafes}</span>
+                </Link>
+              </CardHeader>
 
-          <CardContent className="p-0 divide-y divide-[var(--color-border-subtle)] flex-1">
-            {recentlyAdded.length === 0 ? (
-              <div className="p-6 text-center text-xs text-[var(--color-muted)]">
-                No cafés registered yet.
-              </div>
-            ) : (
-              recentlyAdded.map((cafe) => (
-                <div
-                  key={cafe.id}
-                  className="p-4 flex items-center justify-between hover:bg-[var(--color-border-subtle)]/40 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <Link
-                      href={`/admin/cafes/${cafe.id}`}
-                      className="text-xs font-semibold text-[var(--color-foreground)] hover:text-[var(--color-primary)] block truncate"
-                    >
-                      {cafe.name}
-                    </Link>
-                    <div className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
-                      /{cafe.slug} • {cafe.planName} • Added {new Date(cafe.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
+              <CardContent className="divide-y divide-[var(--color-border-subtle)] p-0">
+                {dashboard.recentlyAdded.length === 0 ? (
+                  <div className="px-4 py-9 text-center">
+                    <p className="text-sm font-medium text-[var(--color-foreground)]">No cafes yet</p>
+                    <p className="mt-1 text-xs text-[var(--color-muted)]">New cafes will appear here.</p>
+                  </div>
+                ) : (
+                  dashboard.recentlyAdded.map((cafe) => (
+                    <div key={cafe.id} className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-neutral-50 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <Link href={`/admin/cafes/${cafe.id}`} className="block truncate text-sm font-medium text-[var(--color-foreground)] hover:underline">
+                          {cafe.name}
+                        </Link>
+                        <p className="mt-0.5 truncate text-xs text-[var(--color-muted)]">
+                          /{cafe.slug} <span aria-hidden="true">·</span> {cafe.planName} <span aria-hidden="true">·</span> Added {new Date(cafe.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 sm:justify-end">
+                        <CafeStatusBadge accessState={cafe.accessState} showDaysRemaining={false} />
+                        <Link href={`/admin/cafes/${cafe.id}`} aria-label={`Open ${cafe.name}`} className="rounded-md p-1.5 text-[var(--color-muted)] hover:bg-[var(--color-border-subtle)] hover:text-[var(--color-foreground)]">
+                          <IconArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                      </div>
                     </div>
-                  </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
 
-                  <div className="flex items-center gap-2">
-                    <CafeStatusBadge accessState={cafe.accessState} showDaysRemaining={false} />
-                    <Link href={`/admin/cafes/${cafe.id}`}>
-                      <Button variant="ghost" size="sm" className="px-2">
-                        <IconArrowUpRight className="w-3.5 h-3.5 text-[var(--color-muted)]" />
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Expiring Soon / Grace Period Cafés */}
-        <ExpiringCafesList
-          cafes={expiringSoon}
-          onRecordPaymentClick={(cafe) => setSelectedCafeForPayment(cafe)}
-        />
-      </div>
-
-      {/* Recent Platform Activity */}
-      <Card className="border border-[var(--color-border)]">
-        <CardHeader className="py-3.5 px-5 flex items-center justify-between border-b border-[var(--color-border-subtle)]">
-          <div className="flex items-center gap-2">
-            <IconHistory className="w-4 h-4 text-[var(--color-muted)]" />
-            <CardTitle className="text-sm">Recent Administrative Activity</CardTitle>
+            <ExpiringCafesList
+              cafes={dashboard.expiringSoon}
+              onRecordPaymentClick={setSelectedCafeForPayment}
+            />
           </div>
-          <Link
-            href="/admin/activity"
-            className="text-xs text-[var(--color-primary)] hover:underline font-medium"
-          >
-            Audit Trail
-          </Link>
-        </CardHeader>
 
-        <CardContent className="p-0 divide-y divide-[var(--color-border-subtle)]">
-          {activity.length === 0 ? (
-            <div className="p-6 text-center text-xs text-[var(--color-muted)]">
-              No audit logs captured yet.
-            </div>
-          ) : (
-            activity.map((log) => (
-              <div
-                key={log.id}
-                className="p-3.5 px-5 flex items-center justify-between text-xs hover:bg-[var(--color-border-subtle)]/40 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Badge variant="neutral" size="sm">
-                    {log.action.replace("ADMIN_", "")}
-                  </Badge>
-                  <span className="font-medium text-[var(--color-foreground)] truncate">
-                    {log.actorName} on {log.entityType.toLowerCase()}{" "}
-                    {log.cafeName ? `(${log.cafeName})` : ""}
-                  </span>
-                </div>
-                <span className="text-[11px] text-[var(--color-muted)] flex-shrink-0 font-mono">
-                  {new Date(log.createdAt).toLocaleDateString("en-IN", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
+          <Card className="overflow-hidden">
+            <CardHeader className="px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <IconHistory className="h-4 w-4 text-neutral-500" aria-hidden="true" />
+                <CardTitle className="text-sm">Recent activity</CardTitle>
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-      </>
+              <Link href="/admin/activity" className="text-xs font-medium text-[var(--color-muted)] hover:text-[var(--color-foreground)]">
+                View audit log
+              </Link>
+            </CardHeader>
+
+            <CardContent className="divide-y divide-[var(--color-border-subtle)] p-0">
+              {dashboard.activity.length === 0 ? (
+                <div className="px-4 py-9 text-center">
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">No activity yet</p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">Platform actions will be recorded here.</p>
+                </div>
+              ) : (
+                dashboard.activity.slice(0, 6).map((log) => (
+                  <div key={log.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Badge variant="neutral" size="sm" className="shrink-0">
+                        {log.action.replace("ADMIN_", "")}
+                      </Badge>
+                      <p className="truncate text-xs text-[var(--color-foreground)]">
+                        <span className="font-medium">{log.actorName}</span> on {log.entityType.toLowerCase()}{log.cafeName ? ` · ${log.cafeName}` : ""}
+                      </p>
+                    </div>
+                    <time className="shrink-0 text-[11px] tabular-nums text-[var(--color-muted)] sm:text-right">
+                      {new Date(log.createdAt).toLocaleDateString("en-IN", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </time>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </>
       )}
 
-      {/* Offline Payment Recording Modal */}
       {selectedCafeForPayment && (
         <PaymentForm
-          isOpen={true}
+          isOpen
           onClose={() => setSelectedCafeForPayment(null)}
           cafeId={selectedCafeForPayment.id}
           cafeName={selectedCafeForPayment.name}
           onSuccess={() => {
-            fetchDashboardData();
+            void fetchDashboardData();
           }}
         />
       )}

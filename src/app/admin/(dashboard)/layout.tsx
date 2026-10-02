@@ -17,13 +17,11 @@ export default async function AdminDashboardLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen flex bg-[var(--color-background)]">
-        {/* Compact Super Admin Sidebar */}
+      <div data-theme="admin" className="min-h-screen bg-[var(--color-background)] md:flex">
         <AdminSidebar />
 
-        {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0">
-          <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6">
+          <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-5 p-4 sm:p-6 xl:p-8">
             {children}
           </main>
         </div>

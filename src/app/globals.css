@@ -85,6 +85,35 @@
   --color-danger-light: var(--cafe-danger-light);
 }
 
+/* Neutral palette scoped to the Super Admin workspace only. */
+[data-theme="admin"] {
+  color-scheme: light;
+  --color-background: #f6f6f5;
+  --color-surface: #ffffff;
+  --color-foreground: #171717;
+  --color-muted: #737373;
+  --color-border: #e5e5e5;
+  --color-border-subtle: #f0f0ef;
+
+  --color-primary: #171717;
+  --color-primary-hover: #404040;
+  --color-primary-light: #f1f1f0;
+
+  --color-success: #39704a;
+  --color-success-light: #f1f6f2;
+  --color-warning: #8a6828;
+  --color-warning-light: #f8f5ed;
+  --color-danger: #9e4545;
+  --color-danger-light: #faf1f1;
+
+  --shadow-subtle: 0 1px 2px rgb(0 0 0 / 3%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 3%);
+  --radius-button: 6px;
+  --radius-input: 6px;
+  --radius-badge: 5px;
+  --radius-card: 8px;
+}
+
 @theme inline {
   --color-background: var(--color-background);
   --color-surface: var(--color-surface);

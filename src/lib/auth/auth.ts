@@ -41,7 +41,11 @@ export const auth = betterAuth({
       otpLength: 6,
       expiresIn: 300, // 5 minutes
     }),
-    dash(),
+    dash({
+      apiKey: process.env.BETTER_AUTH_API_KEY,
+      apiUrl: process.env.BETTER_AUTH_API_URL,
+      kvUrl: process.env.BETTER_AUTH_KV_URL,
+    }),
   ],
   user: {
     additionalFields: {

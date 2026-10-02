@@ -14,73 +14,62 @@ export interface ExpiringCafesListProps {
 export const ExpiringCafesList: React.FC<ExpiringCafesListProps> = ({
   cafes,
   onRecordPaymentClick,
-}) => {
-  return (
-    <Card className="border border-[var(--color-border)] h-full flex flex-col">
-      <CardHeader className="py-3.5 px-5 flex items-center justify-between border-b border-[var(--color-border-subtle)]">
-        <div className="flex items-center gap-2">
-          <IconClock className="w-4 h-4 text-[var(--color-warning)]" />
-          <CardTitle className="text-sm">Expiring Soon & In Grace</CardTitle>
-        </div>
-        <Link
-          href="/admin/cafes?status=GRACE"
-          className="text-xs text-[var(--color-primary)] hover:underline font-medium"
-        >
-          View all
-        </Link>
-      </CardHeader>
+}) => (
+  <Card className="flex h-full min-w-0 flex-col overflow-hidden">
+    <CardHeader className="px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <IconClock className="h-4 w-4 shrink-0 text-neutral-500" aria-hidden="true" />
+        <CardTitle className="truncate text-sm">Expiring soon</CardTitle>
+      </div>
+      <Link href="/admin/cafes?status=GRACE" className="shrink-0 text-xs font-medium text-[var(--color-muted)] hover:text-[var(--color-foreground)]">
+        View all
+      </Link>
+    </CardHeader>
 
-      <CardContent className="p-0 divide-y divide-[var(--color-border-subtle)] flex-1">
-        {cafes.length === 0 ? (
-          <div className="p-6 text-center text-xs text-[var(--color-muted)]">
-            No cafés currently in grace period or expiring soon.
-          </div>
-        ) : (
-          cafes.slice(0, 5).map((cafe) => (
-            <div
-              key={cafe.id}
-              className="p-4 flex items-center justify-between hover:bg-[var(--color-border-subtle)]/40 transition-colors gap-3"
-            >
+    <CardContent className="flex-1 divide-y divide-[var(--color-border-subtle)] p-0">
+      {cafes.length === 0 ? (
+        <div className="px-4 py-9 text-center">
+          <p className="text-sm font-medium text-[var(--color-foreground)]">All cafes are up to date</p>
+          <p className="mt-1 text-xs text-[var(--color-muted)]">No subscriptions are expiring soon.</p>
+        </div>
+      ) : (
+        cafes.slice(0, 5).map((cafe) => {
+          const inGrace = cafe.accessState.status === "GRACE";
+          return (
+            <div key={cafe.id} className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-neutral-50 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/admin/cafes/${cafe.id}`}
-                    className="text-xs font-semibold text-[var(--color-foreground)] hover:text-[var(--color-primary)] truncate"
-                  >
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <Link href={`/admin/cafes/${cafe.id}`} className="max-w-full truncate text-sm font-medium text-[var(--color-foreground)] hover:underline">
                     {cafe.name}
                   </Link>
-                  <Badge variant={cafe.accessState.status === "GRACE" ? "grace" : "warning"} size="sm">
-                    {cafe.accessState.status === "GRACE"
-                      ? `${cafe.accessState.daysRemainingInPeriod}d grace left`
-                      : "Expiring"}
+                  <Badge variant={inGrace ? "grace" : "warning"} size="sm">
+                    {inGrace ? `${cafe.accessState.daysRemainingInPeriod}d grace` : "Expiring"}
                   </Badge>
                 </div>
-                <div className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
-                  Owner: {cafe.ownerEmail || cafe.contactEmail || "N/A"} • Plan: {cafe.planName}
-                </div>
+                <p className="mt-0.5 truncate text-xs text-[var(--color-muted)]">
+                  {cafe.ownerEmail || cafe.contactEmail || "No owner email"} <span aria-hidden="true">·</span> {cafe.planName}
+                </p>
               </div>
 
-              <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="flex items-center justify-between gap-1.5 sm:justify-end">
                 {onRecordPaymentClick && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => onRecordPaymentClick(cafe)}
-                    leftIcon={<IconReceipt className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
+                    leftIcon={<IconReceipt className="h-3.5 w-3.5" aria-hidden="true" />}
                   >
-                    Pay
+                    Record payment
                   </Button>
                 )}
-                <Link href={`/admin/cafes/${cafe.id}`}>
-                  <Button variant="ghost" size="sm" className="px-2">
-                    <IconChevronRight className="w-4 h-4 text-[var(--color-muted)]" />
-                  </Button>
+                <Link href={`/admin/cafes/${cafe.id}`} aria-label={`Open ${cafe.name}`} className="rounded-md p-1.5 text-[var(--color-muted)] hover:bg-[var(--color-border-subtle)] hover:text-[var(--color-foreground)]">
+                  <IconChevronRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               </div>
             </div>
-          ))
-        )}
-      </CardContent>
-    </Card>
-  );
-};
+          );
+        })
+      )}
+    </CardContent>
+  </Card>
+);
