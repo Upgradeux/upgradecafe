@@ -7,7 +7,7 @@
 | `DATABASE_URL` | PostgreSQL connection string | `postgres://postgres:pw@db.ref.supabase.co:5432/postgres` | **YES** |
 | `BETTER_AUTH_SECRET` | 32+ character random secret for signing session tokens | Generate with `openssl rand -base64 32` | **YES** |
 | `BETTER_AUTH_URL` | Base canonical application URL | `https://admin.upgradecafe.com` | **YES** |
-| `NEXT_PUBLIC_APP_URL` | Client-accessible URL for auth client | `https://admin.upgradecafe.com` | **YES** |
+| `NEXT_PUBLIC_APP_URL` | No longer needed; the auth client uses the current site origin | Leave unset | No |
 | `BETTER_AUTH_API_KEY` | Better Auth Infrastructure API key used by the Dash plugin | Copy from your Better Auth Infrastructure project | Required to connect Dash |
 | `BETTER_AUTH_API_URL` | Optional Better Auth Infrastructure API endpoint override | Use the endpoint shown in your project settings | No |
 | `BETTER_AUTH_KV_URL` | Better Auth Infrastructure identify/KV endpoint for the server plugin | Use the identify endpoint shown in your project settings | No (recommended for Dash identification) |
@@ -24,7 +24,7 @@
 | `SUPER_ADMIN_EMAIL` | Initial Super Admin email provisioned via `npm run db:seed` | Your platform admin email | Required for first seed |
 | `SUPER_ADMIN_PASSWORD` | Initial Super Admin password; at least 12 characters | Set a unique secret locally | Required for first seed |
 
-Production startup fails when `DATABASE_URL` or `BETTER_AUTH_SECRET` is missing. Set `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` to the deployed app URL for working authentication callbacks and browser requests. Redis and R2 can be connected later; rate limiting uses an in-memory fallback without Redis, while real asset uploads require R2. Google sign-in is enabled only when both Google variables are set. Use `npm run db:admin` only when you intend to create or reset the configured Super Admin password.
+Production startup fails when `DATABASE_URL` or `BETTER_AUTH_SECRET` is missing. Set `BETTER_AUTH_URL` to the deployed app URL for working authentication callbacks. The browser auth client uses the current site origin, so it works on localhost and Vercel without `NEXT_PUBLIC_APP_URL`. Redis and R2 can be connected later; rate limiting uses an in-memory fallback without Redis, while real asset uploads require R2. Google sign-in is enabled only when both Google variables are set. Use `npm run db:admin` only when you intend to create or reset the configured Super Admin password.
 
 ---
 
