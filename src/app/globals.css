@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+:root {
+  /* Super Admin default surface tokens - Neutral graphite + warm cream + muted terracotta */
+  --color-background: #F7F6F2;
+  --color-surface: #FFFFFF;
+  --color-foreground: #242321;
+  --color-muted: #73716B;
+  --color-border: #E7E4DD;
+  --color-border-subtle: #F0EDE6;
+  
+  --color-primary: #B85C3A;
+  --color-primary-hover: #994A2E;
+  --color-primary-light: #FBF4F0;
+  
+  --color-success: #4E7A5A;
+  --color-success-light: #F0F6F2;
+  
+  --color-warning: #B8863B;
+  --color-warning-light: #FBF6EE;
+  
+  --color-danger: #B64A45;
+  --color-danger-light: #FAF1F0;
+
+  /* Elevation (compact, subtle, luxury elevation that works on any theme background) */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-dropdown: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-modal: 0 8px 24px -4px rgba(0, 0, 0, 0.08);
+
+  /* Radius tokens - STRICTLY rounded-md (6px) for controls and rounded-lg (8px) for containers */
+  --radius-button: 6px;
+  --radius-input: 6px;
+  --radius-badge: 6px;
+  --radius-card: 8px;
+  --radius-modal: 8px;
+  --radius-panel: 8px;
+
+  /* Café Default Theme Tokens (Coffee + Caramel + Cream) */
+  --cafe-background: #FAF8F4;
+  --cafe-surface: #FFFFFF;
+  --cafe-foreground: #292724;
+  --cafe-muted: #77716A;
+  --cafe-border: #E9E4DC;
+  --cafe-border-subtle: #F3EFE9;
+
+  --cafe-primary: #8B5E3C;
+  --cafe-primary-hover: #754C30;
+  --cafe-primary-light: #F8F3EE;
+  --cafe-secondary: #D89B72;
+  --cafe-accent: #E7C9A9;
+
+  --cafe-success: #66805F;
+  --cafe-success-light: #F2F5F1;
+  --cafe-warning: #C4934A;
+  --cafe-warning-light: #FAF5ED;
+  --cafe-danger: #B65D54;
+  --cafe-danger-light: #FAF1F0;
+
+  --cafe-radius: 8px;
+}
+
+/* Café platform theme (activates for cafe dashboard and future public menu) */
+[data-theme="cafe"],
+[data-menu-theme] {
+  color-scheme: light !important;
+  --color-background: var(--cafe-background);
+  --color-surface: var(--cafe-surface);
+  --color-foreground: var(--cafe-foreground);
+  --color-muted: var(--cafe-muted);
+  --color-border: var(--cafe-border);
+  --color-border-subtle: var(--cafe-border-subtle);
+
+  --color-primary: var(--cafe-primary);
+  --color-primary-hover: var(--cafe-primary-hover);
+  --color-primary-light: var(--cafe-primary-light);
+
+  --color-success: var(--cafe-success);
+  --color-success-light: var(--cafe-success-light);
+
+  --color-warning: var(--cafe-warning);
+  --color-warning-light: var(--cafe-warning-light);
+
+  --color-danger: var(--cafe-danger);
+  --color-danger-light: var(--cafe-danger-light);
+}
+
+@theme inline {
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-foreground: var(--color-foreground);
+  --color-muted: var(--color-muted);
+  --color-border: var(--color-border);
+  --color-border-subtle: var(--color-border-subtle);
+
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-light: var(--color-primary-light);
+
+  --color-success: var(--color-success);
+  --color-success-light: var(--color-success-light);
+
+  --color-warning: var(--color-warning);
+  --color-warning-light: var(--color-warning-light);
+
+  --color-danger: var(--color-danger);
+  --color-danger-light: var(--color-danger-light);
+
+  --font-sans: var(--font-jakarta-sans);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-jakarta-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbars for compact dense data tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D5D2C9;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #BBB7AD;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Typography system: Display/Heading font + UI/Body font */
+.font-heading {
+  font-family: var(--font-heading, var(--font-jakarta-sans)), system-ui, sans-serif;
+}
+.font-body {
+  font-family: var(--font-body, var(--font-jakarta-sans)), system-ui, sans-serif;
+}
