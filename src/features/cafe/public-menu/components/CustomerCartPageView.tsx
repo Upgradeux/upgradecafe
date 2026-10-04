@@ -1029,39 +1029,49 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
                 );
               } catch {}
             } else if (data?.active === false) {
-              // Dining session expired due to inactivity or concluded
-              setClaimedTable(null);
-              setSelectedTableNumber("");
-              try {
-                localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
-              } catch {}
-
-              // Determine if guest user vs authenticated account
-              const savedProfile = localStorage.getItem(
-                `cafe_customer_profile_${cafe.slug}`
+              const hadClaimedTable = Boolean(
+                localStorage.getItem(`cafe_claimed_table_${cafe.slug}`)
               );
-              let isGuest = true;
-              if (savedProfile) {
-                try {
-                  const p = JSON.parse(savedProfile);
-                  if (
-                    p?.id &&
-                    !p?.isGuest &&
-                    !p.id.startsWith("cust_") &&
-                    !p.id.startsWith("usr_")
-                  ) {
-                    isGuest = false;
-                  }
-                } catch {}
-              }
+              const isActualSessionExpired =
+                data?.reason === "EXPIRED" ||
+                Boolean(data?.hadPreviousSession) ||
+                hadClaimedTable;
 
-              // Guest: clear cart upon session expiration
-              // Logged-in: preserve persistent account cart, require QR scan for dine-in checkout
-              if (isGuest) {
-                setCart([]);
+              if (isActualSessionExpired) {
+                // Dining session actually expired due to inactivity or concluded
+                setClaimedTable(null);
+                setSelectedTableNumber("");
                 try {
-                  localStorage.removeItem(`cafe_cart_${cafe.slug}`);
+                  localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
                 } catch {}
+
+                // Determine if guest user vs authenticated account
+                const savedProfile = localStorage.getItem(
+                  `cafe_customer_profile_${cafe.slug}`
+                );
+                let isGuest = true;
+                if (savedProfile) {
+                  try {
+                    const p = JSON.parse(savedProfile);
+                    if (
+                      p?.id &&
+                      !p?.isGuest &&
+                      !p.id.startsWith("cust_") &&
+                      !p.id.startsWith("usr_")
+                    ) {
+                      isGuest = false;
+                    }
+                  } catch {}
+                }
+
+                // Guest: clear cart upon actual session expiration
+                // Logged-in: preserve persistent account cart, require QR scan for dine-in checkout
+                if (isGuest) {
+                  setCart([]);
+                  try {
+                    localStorage.removeItem(`cafe_cart_${cafe.slug}`);
+                  } catch {}
+                }
               }
             }
           })

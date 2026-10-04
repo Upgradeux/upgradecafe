@@ -28,14 +28,17 @@ import {
   IconChevronUp,
   IconRefresh,
   IconToolsKitchen2,
-  IconTag,
   IconBellRinging,
   IconDroplet,
   IconSmartHome,
   IconShoppingCart,
   IconRepeat,
   IconClipboardList,
+  IconDownload,
 } from "@tabler/icons-react";
+import { GetAppModal } from "./GetAppModal";
+import { TableQrScannerModal } from "./TableQrScannerModal";
+import { UnifiedFloatingDock } from "./UnifiedFloatingDock";
 
 // Signature Cloche Icon matching floating dock
 const ClocheIcon = ({ className = "w-[22px] h-[22px]" }: { className?: string }) => (
@@ -162,6 +165,73 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
       router.prefetch(`/menu/${cafe.slug}/cart${tableQuery}`);
     } catch {}
   }, [cafe.slug, router, tableQuery]);
+
+  // Detect PWA Installation status (standalone mode or previously recorded install)
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [isGetAppOpen, setIsGetAppOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  const handleTableClaimedFromScanner = (tableNum: string, tableId: string, qrId?: string | null) => {
+    setIsScannerOpen(false);
+    try {
+      localStorage.setItem(
+        `cafe_claimed_table_${cafe.slug}`,
+        JSON.stringify({
+          id: tableId,
+          tableNumber: tableNum,
+          qrIdentifier: qrId || null,
+          claimedAt: Date.now(),
+        })
+      );
+    } catch {}
+
+    fetch(`/api/cafe/${cafe.slug}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        qrIdentifier: qrId || null,
+        tableNumber: tableNum,
+        orderType: "DINE_IN",
+      }),
+    }).catch(() => {});
+
+    const q = `?table=${encodeURIComponent(tableNum)}${qrId ? `&qr=${encodeURIComponent(qrId)}` : ""}`;
+    window.location.href = `/menu/${cafe.slug}/orders${q}`;
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkInstalled = () => {
+      const standalone = window.matchMedia("(display-mode: standalone)").matches;
+      const iosStandalone = (window.navigator as any).standalone === true;
+      const localFlag = localStorage.getItem(`cafe_pwa_installed_${cafe.slug}`) === "true";
+      setIsAppInstalled(Boolean(standalone || iosStandalone || localFlag));
+    };
+
+    checkInstalled();
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      try {
+        localStorage.setItem(`cafe_pwa_installed_${cafe.slug}`, "true");
+      } catch {}
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, [cafe.slug]);
 
   useEffect(() => {
     const updateCartCount = () => {
@@ -1016,92 +1086,53 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
       </main>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          4. FLOATING BOTTOM NAVIGATION DOCK (EXACT SAME AS HOME SCREEN)
+          4. FLOATING BOTTOM NAVIGATION DOCK & QUICK ACTION COMPANION (+)
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-[360px] pointer-events-auto">
-        <nav
-          className="relative backdrop-blur-2xl rounded-full border border-white/80 p-1.5 flex items-center justify-between"
-          style={{
-            backgroundColor: `${visualTheme.dockBg}d9`,
-            boxShadow:
-              "inset 0 1.5px 3px rgba(255,255,255,0.95), 0 6px 20px -2px rgba(0,0,0,0.08), 0 2px 6px -1px rgba(0,0,0,0.04)",
-          }}
-        >
-          {/* Home */}
-          <button
-            type="button"
-            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
-            className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
-            title="Menu Home"
-          >
-            <IconSmartHome className="w-5 h-5 stroke-[2]" />
-          </button>
-
-          {/* Full Menu / Categories */}
-          <button
-            type="button"
-            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}/all-menu${tableQuery}`)}
-            className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
-            title="All Menu Items"
-          >
-            <IconToolsKitchen2 className="w-5 h-5 stroke-[2]" />
-          </button>
-
-          {/* Cart */}
-          <button
-            type="button"
-            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}/cart${tableQuery}`)}
-            className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
-            title="View Cart"
-          >
-            <IconShoppingCart className="w-5 h-5 stroke-[2]" />
-            {cartCount > 0 && (
-              <span className="absolute top-1 right-1 z-20 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9.5px] font-bold font-mono flex items-center justify-center shadow-xs border border-white">
-                {cartCount}
-              </span>
-            )}
-          </button>
-
-          {/* Orders (ACTIVE TAB WITH SIGNATURE PILL) */}
-          <button
-            type="button"
-            className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full cursor-pointer focus:outline-none"
-            title="Orders"
-          >
-            <motion.div
-              layoutId="floatingDockActivePill"
-              className={`absolute inset-0 rounded-full bg-gradient-to-tr ${visualTheme.dockActiveGradient}`}
-              style={{
-                boxShadow:
-                  "inset 0 1.5px 2px rgba(255,255,255,0.65), inset 0 -1.5px 2px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.14)",
-              }}
-              transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
-            />
-            <motion.span
-              animate={{ scale: 1.08, y: -0.5 }}
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              className="relative z-10 flex items-center justify-center text-white"
-            >
-              <IconClipboardList className="w-5 h-5 stroke-[2]" />
-            </motion.span>
-            {activeOrders.length > 0 && (
-              <span className="absolute top-1 right-1 z-20 min-w-4 h-4 px-1 rounded-full bg-emerald-400 text-white text-[9.5px] font-bold font-mono flex items-center justify-center shadow-xs border border-white">
-                {activeOrders.length}
-              </span>
-            )}
-          </button>
-
-          {/* Offers */}
-          <button
-            type="button"
-            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}/all-menu?diet=BESTSELLER${tableQuery}`)}
-            className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
-            title="Special Offers"
-          >
-            <IconTag className="w-5 h-5 stroke-[2]" />
-          </button>
-        </nav>
-      </div>
+      <UnifiedFloatingDock
+        cafe={cafe}
+        visualTheme={visualTheme}
+        activeTableName={cleanTableNum || (table?.tableNumber ?? null)}
+        isAppInstalled={isAppInstalled}
+        tabs={[
+          {
+            id: "home",
+            label: "Home",
+            icon: <IconSmartHome className="w-5 h-5 stroke-[2]" />,
+            isActive: false,
+            onClick: () => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`),
+          },
+          {
+            id: "menu",
+            label: "Menu",
+            icon: <IconToolsKitchen2 className="w-5 h-5 stroke-[2]" />,
+            isActive: false,
+            onClick: () => transitionNavigate(router, `/menu/${cafe.slug}/all-menu${tableQuery}`),
+          },
+          {
+            id: "cart",
+            label: "Cart",
+            icon: <IconShoppingCart className="w-5 h-5 stroke-[2]" />,
+            badge: cartCount > 0 ? cartCount : undefined,
+            isActive: false,
+            onClick: () => transitionNavigate(router, `/menu/${cafe.slug}/cart${tableQuery}`),
+          },
+          {
+            id: "orders",
+            label: "Orders",
+            icon: <IconClipboardList className="w-5 h-5 stroke-[2]" />,
+            badge: activeOrders.length > 0 ? activeOrders.length : undefined,
+            badgeColor: "bg-emerald-400",
+            isActive: true,
+            onClick: () => {},
+          },
+        ]}
+        onOpenScanner={() => setIsScannerOpen(true)}
+        onOpenGetApp={() => {
+          if (deferredPrompt) deferredPrompt.prompt();
+          setIsGetAppOpen(true);
+        }}
+        onOpenCallStaff={() => handleCallStaff("CALL_WAITER")}
+      />
 
       {/* Integrated Live Tracker Modal */}
       {(trackerOrderId || activeOrders.length > 0) && (
@@ -1168,6 +1199,31 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
           }}
         />
       )}
+
+      {/* PWA Get App Modal */}
+      <GetAppModal
+        isOpen={isGetAppOpen}
+        onClose={() => setIsGetAppOpen(false)}
+        cafe={cafe}
+        visualTheme={visualTheme}
+        deferredPrompt={deferredPrompt}
+        onInstalled={() => {
+          setIsAppInstalled(true);
+          try {
+            localStorage.setItem(`cafe_pwa_installed_${cafe.slug}`, "true");
+          } catch {}
+        }}
+      />
+
+      {/* Table QR Scanner Modal */}
+      <TableQrScannerModal
+        isOpen={isScannerOpen}
+        cafeSlug={cafe.slug}
+        cafeName={cafe.name}
+        digitalMenuTheme={digitalMenuTheme}
+        onTableClaimed={handleTableClaimedFromScanner}
+        onClose={() => setIsScannerOpen(false)}
+      />
     </div>
   );
 };

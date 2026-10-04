@@ -61,10 +61,12 @@ export async function GET(
     });
 
     if (!activeSession) {
+      const hadPreviousSession = Boolean(rawToken || customerId);
       const response = NextResponse.json({
         success: true,
         active: false,
-        reason: "EXPIRED",
+        reason: hadPreviousSession ? "EXPIRED" : "NO_SESSION",
+        hadPreviousSession,
         table: null,
         session: null,
         activeOrders: [],

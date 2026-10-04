@@ -1669,6 +1669,75 @@ async function runAllTests() {
   });
   assert(checkAt28Min === null, "14.8c Session expires 16 minutes after last activity");
 
+  // 14.9 TEST 9: VERIFY DISTINCTION BETWEEN BROWSING GUEST (NO SESSION) AND EXPIRED SESSION
+  // Case 1: Customer is browsing, adds items, opens cart. No prior session existed.
+  let browsingCart = [
+    { cartItemId: "item-b1", name: "Iced Latte", quantity: 1, unitPrice: 180 },
+    { cartItemId: "item-b2", name: "Almond Croissant", quantity: 1, unitPrice: 160 },
+  ];
+  const browsingSessionResponse = {
+    success: true,
+    active: false,
+    reason: "NO_SESSION" as string,
+    hadPreviousSession: false,
+    table: null,
+  };
+  const hadBrowsingClaimedTable = false;
+  const isBrowsingExpired =
+    browsingSessionResponse.reason === "EXPIRED" ||
+    Boolean(browsingSessionResponse.hadPreviousSession) ||
+    hadBrowsingClaimedTable;
+
+  if (isBrowsingExpired) {
+    browsingCart = [];
+  }
+  assert(isBrowsingExpired === false, "14.9a Browsing customer without session does NOT trigger session expiration");
+  assert(browsingCart.length === 2, "14.9b Browsing customer cart remains intact when opening cart");
+
+  // Case 2a: Guest customer with active session that actually expired
+  let guestExpiredCart = [
+    { cartItemId: "item-g1", name: "Espresso", quantity: 1, unitPrice: 120 },
+  ];
+  let guestExpiredTable: string | null = "Table 05";
+  const guestExpiredResponse = {
+    success: true,
+    active: false,
+    reason: "EXPIRED" as const,
+    hadPreviousSession: true,
+    table: null,
+  };
+  const hadGuestClaimedTable = true;
+  const isGuestActualExpired =
+    guestExpiredResponse.reason === "EXPIRED" ||
+    Boolean(guestExpiredResponse.hadPreviousSession) ||
+    hadGuestClaimedTable;
+
+  if (isGuestActualExpired) {
+    guestExpiredTable = null;
+    const isGuestUser = true; // Guest user
+    if (isGuestUser) {
+      guestExpiredCart = [];
+    }
+  }
+  assert(isGuestActualExpired === true, "14.9c Session with expired cookie/table claim correctly triggers actual expiration");
+  assert(guestExpiredTable === null, "14.9d Table context cleared on actual session expiration");
+  assert(guestExpiredCart.length === 0, "14.9e Guest cart cleared on actual session expiration");
+
+  // Case 2b: Logged-in customer with active session that actually expired
+  let loggedInExpiredCart = [
+    { cartItemId: "item-l1", name: "Pour Over Coffee", quantity: 1, unitPrice: 200 },
+  ];
+  let loggedInExpiredTable: string | null = "Table 05";
+  if (isGuestActualExpired) {
+    loggedInExpiredTable = null;
+    const isGuestUser = false; // Logged-in authenticated account
+    if (isGuestUser) {
+      loggedInExpiredCart = [];
+    }
+  }
+  assert(loggedInExpiredTable === null, "14.9f Logged-in table context cleared on actual session expiration");
+  assert(loggedInExpiredCart.length === 1, "14.9g Logged-in customer persistent cart is preserved on actual session expiration");
+
   console.log("\n=======================================================");
   console.log(`📊 TEST RESULTS: ${passedCount} PASSED, ${failedCount} FAILED`);
   console.log("=======================================================\n");

@@ -51,6 +51,8 @@ import { PopularSectionRenderer } from "../components/sections/PopularSectionRen
 import { PopularItemCard } from "../components/PopularItemCard";
 import { MemberWalletModal } from "../components/MemberWalletModal";
 import { GetAppModal } from "../components/GetAppModal";
+import { UnifiedFloatingDock } from "../components/UnifiedFloatingDock";
+import { TableQrScannerModal } from "../components/TableQrScannerModal";
 import { calculatePopularItems } from "../utils/popular-calculator";
 
 export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
@@ -100,8 +102,39 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
   menuItemNamesById,
   categoryNamesById,
   onOpenCallStaff,
+  onShareMenu,
 }) => {
   const router = useRouter();
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+  const handleTableClaimedFromScanner = (tableNum: string, tableId: string, qrId?: string | null) => {
+    setIsScannerOpen(false);
+    try {
+      localStorage.setItem(
+        `cafe_claimed_table_${cafe.slug}`,
+        JSON.stringify({
+          id: tableId,
+          tableNumber: tableNum,
+          qrIdentifier: qrId || null,
+          claimedAt: Date.now(),
+        })
+      );
+    } catch {}
+
+    fetch(`/api/cafe/${cafe.slug}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        qrIdentifier: qrId || null,
+        tableNumber: tableNum,
+        orderType: "DINE_IN",
+      }),
+    }).catch(() => {});
+
+    const q = `?table=${encodeURIComponent(tableNum)}${qrId ? `&qr=${encodeURIComponent(qrId)}` : ""}`;
+    window.location.href = `/menu/${cafe.slug}${q}`;
+  };
   const qrParam = table?.qrIdentifier || null;
   const tableQuery = activeTableName
     ? `?table=${encodeURIComponent(activeTableName)}${qrParam ? `&qr=${encodeURIComponent(qrParam)}` : ""}`
@@ -1484,7 +1517,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
         <>
           {!isStackedPillsOpen ? (
             /* THIN (CLOSED) MODE: Stacked on top of each other, full width, sleek slim height */
-            <div className="fixed bottom-20 inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="fixed bottom-[88px] inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
               {/* Thin Tracker Pill: Click to expand */}
               <div
                 role="button"
@@ -1588,7 +1621,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
             </div>
           ) : (
             /* OPEN (EXPANDED) MODE: Both pills compact (h-12 / 48px) with center bend, click pill to close, no corner arrows */
-            <div className="fixed bottom-20 inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="fixed bottom-[88px] inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
               {/* Compact Sculpted Center Bend Tracker Pill (h-12 / 48px) */}
               <div
                 role="button"
@@ -1784,7 +1817,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
 
       {/* Case 2: ONLY Active Orders exist (Cart is empty): Compact Sculpted Center Bend tracker pill (h-12) */}
       {hasActiveOrders && !hasCart && (
-        <div className="fixed bottom-20 inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-[88px] inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div
             onClick={onOpenLiveTracker}
             role="button"
@@ -1876,7 +1909,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
 
       {/* Case 3: ONLY Cart items exist (No active orders): Compact Sculpted Center Bend Cart Pill (h-12 / 48px) */}
       {!hasActiveOrders && hasCart && latestCartItem && (
-        <div className="fixed bottom-20 inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-[88px] inset-x-3 sm:inset-x-4 max-w-sm sm:max-w-md mx-auto z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div
             onClick={onOpenCart}
             role="button"
@@ -1966,174 +1999,92 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
       )}
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          7. FLOATING BOTTOM NAVIGATION DOCK
+          7. FLOATING BOTTOM NAVIGATION DOCK & QUICK ACTION COMPANION (+)
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-[360px] pointer-events-auto">
-        <nav
-          className="relative backdrop-blur-2xl rounded-full border border-white/80 p-1.5 flex items-center justify-between"
-          style={{
-            backgroundColor: `${visualTheme.dockBg}d9`,
-            boxShadow:
-              "inset 0 1.5px 3px rgba(255,255,255,0.95), 0 6px 20px -2px rgba(0,0,0,0.08), 0 2px 6px -1px rgba(0,0,0,0.04)",
-          }}
-        >
-          {[
-            {
-              id: "home" as const,
-              label: "Home",
-              icon: <IconSmartHome className="w-5 h-5 stroke-[2]" />,
-              onClick: () => {
-                setActiveBottomTab("home");
-                setCurrentMainTab("home");
-                setSelectedCategoryId("ALL");
-                setDietFilter("ALL");
-                setSearch("");
-                if (typeof window !== "undefined") {
-                  window.history.pushState(null, "", `/menu/${cafe.slug}${tableQuery}`);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }
-              },
+      <UnifiedFloatingDock
+        cafe={cafe}
+        visualTheme={visualTheme}
+        activeTableName={activeTableName}
+        isAppInstalled={isAppInstalled}
+        tabs={[
+          {
+            id: "home",
+            label: "Home",
+            icon: <IconSmartHome className="w-5 h-5 stroke-[2]" />,
+            isActive: activeBottomTab === "home",
+            onClick: () => {
+              setActiveBottomTab("home");
+              setCurrentMainTab("home");
+              setSelectedCategoryId("ALL");
+              setDietFilter("ALL");
+              setSearch("");
+              if (typeof window !== "undefined") {
+                window.history.pushState(null, "", `/menu/${cafe.slug}${tableQuery}`);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }
             },
-            {
-              id: "menu" as const,
-              label: "Menu",
-              icon: <IconToolsKitchen2 className="w-5 h-5 stroke-[2]" />,
-              onClick: () => {
-                setActiveBottomTab("menu");
-                setCurrentMainTab("menu");
-                setSelectedCategoryId("ALL");
-                setDietFilter("ALL");
-                setSearch("");
-                if (typeof window !== "undefined") {
-                  window.history.pushState(null, "", `/menu/${cafe.slug}/all-menu${tableQuery}`);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }
-              },
+          },
+          {
+            id: "menu",
+            label: "Menu",
+            icon: <IconToolsKitchen2 className="w-5 h-5 stroke-[2]" />,
+            isActive: activeBottomTab === "menu",
+            onClick: () => {
+              setActiveBottomTab("menu");
+              setCurrentMainTab("menu");
+              setSelectedCategoryId("ALL");
+              setDietFilter("ALL");
+              setSearch("");
+              if (typeof window !== "undefined") {
+                window.history.pushState(null, "", `/menu/${cafe.slug}/all-menu${tableQuery}`);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }
             },
-            {
-              id: "cart" as const,
-              label: "Cart",
-              icon: <IconShoppingCart className="w-5 h-5 stroke-[2]" />,
-              badge: cartCount > 0 ? cartCount : undefined,
-              onPointerDown: () => {
-                router.prefetch(`/menu/${cafe.slug}/cart${tableQuery}`);
-              },
-              onClick: () => {
-                setActiveBottomTab("cart");
-                onOpenCart();
-              },
+          },
+          {
+            id: "cart",
+            label: "Cart",
+            icon: <IconShoppingCart className="w-5 h-5 stroke-[2]" />,
+            badge: cartCount > 0 ? cartCount : undefined,
+            isActive: activeBottomTab === "cart",
+            onPointerDown: () => {
+              router.prefetch(`/menu/${cafe.slug}/cart${tableQuery}`);
             },
-            {
-              id: "orders" as const,
-              label: "Orders",
-              icon: <IconClipboardList className="w-5 h-5 stroke-[2]" />,
-              badge: activeOrdersCount > 0 ? activeOrdersCount : undefined,
-              badgeColor: "bg-emerald-400",
-              onPointerDown: () => {
-                router.prefetch(`/menu/${cafe.slug}/orders${tableQuery}`);
-              },
-              onClick: () => {
-                setActiveBottomTab("orders");
-                if (onOpenOrders) {
-                  onOpenOrders();
-                } else {
-                  transitionNavigate(router, `/menu/${cafe.slug}/orders${tableQuery}`);
-                }
-              },
-              hasPulse: hasActiveOrders && activeOrdersCount === 0,
+            onClick: () => {
+              setActiveBottomTab("cart");
+              onOpenCart();
             },
-            (!isAppInstalled
-              ? {
-                  id: "get_app" as const,
-                  label: "Get App",
-                  icon: <IconDownload className="w-5 h-5 stroke-[2]" />,
-                  onClick: () => {
-                    setActiveBottomTab("get_app");
-                    if (deferredPrompt) {
-                      deferredPrompt.prompt();
-                    }
-                    setIsGetAppOpen(true);
-                  },
-                }
-              : {
-                  id: "rewards" as const,
-                  label: "Rewards",
-                  icon: <IconGift className="w-5 h-5 stroke-[2]" />,
-                  badge: customerProfile?.loyaltyPoints
-                    ? `${customerProfile.loyaltyPoints}`
-                    : undefined,
-                  badgeColor: "bg-amber-500",
-                  onClick: () => {
-                    setActiveBottomTab("rewards");
-                    setIsWalletOpen(true);
-                  },
-                }),
-          ].map((tab) => {
-            const isActive = activeBottomTab === tab.id;
-            return (
-              <motion.button
-                key={tab.id}
-                type="button"
-                onClick={tab.onClick}
-                onPointerDown={(tab as any).onPointerDown}
-                whileTap={{ scale: 0.92 }}
-                title={tab.label}
-                className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full cursor-pointer focus:outline-none"
-              >
-                {/* Active Circular Pill with Theme Active Gradient & Depth */}
-                {isActive && (
-                  <motion.div
-                    layoutId="floatingDockActivePill"
-                    className={`absolute inset-0 rounded-full bg-gradient-to-tr ${visualTheme.dockActiveGradient}`}
-                    style={{
-                      boxShadow:
-                        "inset 0 1.5px 2px rgba(255,255,255,0.65), inset 0 -1.5px 2px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.14)",
-                    }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 500,
-                      damping: 35,
-                      mass: 0.8,
-                    }}
-                  />
-                )}
-
-                {/* Modern Icon with micro-spring elevation */}
-                <motion.span
-                  animate={{
-                    scale: isActive ? 1.08 : 1,
-                    y: isActive ? -0.5 : 0,
-                  }}
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  className={`relative z-10 flex items-center justify-center transition-colors duration-200 ${
-                    isActive
-                      ? "text-white"
-                      : "text-[#6B7280] hover:text-[#1C1D1A]"
-                  }`}
-                >
-                  {tab.icon}
-                </motion.span>
-
-                {/* Badge for Cart Count or Active Orders */}
-                {tab.badge && (
-                  <span
-                    className={`absolute top-1 right-1 z-20 min-w-4 h-4 px-1 rounded-full ${
-                      (tab as any).badgeColor || "bg-[#EF4444]"
-                    } text-white text-[9.5px] font-bold font-mono flex items-center justify-center shadow-xs border border-white`}
-                  >
-                    {tab.badge}
-                  </span>
-                )}
-
-                {/* Pulse Indicator for Active Kitchen Order when no badge */}
-                {tab.hasPulse && !tab.badge && (
-                  <span className="absolute top-1.5 right-1.5 z-20 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-white animate-pulse" />
-                )}
-              </motion.button>
-            );
-          })}
-        </nav>
-      </div>
+          },
+          {
+            id: "orders",
+            label: "Orders",
+            icon: <IconClipboardList className="w-5 h-5 stroke-[2]" />,
+            badge: activeOrdersCount > 0 ? activeOrdersCount : undefined,
+            badgeColor: "bg-emerald-400",
+            hasPulse: hasActiveOrders && activeOrdersCount === 0,
+            isActive: activeBottomTab === "orders",
+            onPointerDown: () => {
+              router.prefetch(`/menu/${cafe.slug}/orders${tableQuery}`);
+            },
+            onClick: () => {
+              setActiveBottomTab("orders");
+              if (onOpenOrders) {
+                onOpenOrders();
+              } else {
+                transitionNavigate(router, `/menu/${cafe.slug}/orders${tableQuery}`);
+              }
+            },
+          },
+        ]}
+        onOpenScanner={() => setIsScannerOpen(true)}
+        onOpenGetApp={() => {
+          if (deferredPrompt) deferredPrompt.prompt();
+          setIsGetAppOpen(true);
+        }}
+        onOpenOffers={onOpenOffers ? () => onOpenOffers() : undefined}
+        onOpenCallStaff={onOpenCallStaff}
+        onShareMenu={onShareMenu}
+      />
 
       {/* PWA Get App Modal */}
       <GetAppModal
@@ -2151,6 +2102,16 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
             localStorage.setItem(`cafe_pwa_installed_${cafe.slug}`, "true");
           } catch {}
         }}
+      />
+
+      {/* Table QR Scanner Modal */}
+      <TableQrScannerModal
+        isOpen={isScannerOpen}
+        cafeSlug={cafe.slug}
+        cafeName={cafe.name}
+        digitalMenuTheme={digitalMenuTheme}
+        onTableClaimed={handleTableClaimedFromScanner}
+        onClose={() => setIsScannerOpen(false)}
       />
 
       {/* Member Wallet Modal */}

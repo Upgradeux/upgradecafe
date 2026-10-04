@@ -77,15 +77,73 @@ export default async function CustomerCartPage({
     notFound();
   }
 
-  // Resolve cafe settings & theme
-  const settings = await safeDbQuery(async () => {
-    const [s] = await db
-      .select()
-      .from(cafeSettings)
-      .where(eq(cafeSettings.cafeId, cafe.id))
-      .limit(1);
-    return s || null;
-  }, null);
+  // Resolve cafe settings, offers, tables, and scope-matching data concurrently in parallel
+  const [
+    settings,
+    offersList,
+    quickAddItems,
+    allCafeTables,
+    allCategories,
+    allMenuItems,
+    qrTable,
+  ] = await Promise.all([
+    safeDbQuery(async () => {
+      const [s] = await db
+        .select()
+        .from(cafeSettings)
+        .where(eq(cafeSettings.cafeId, cafe.id))
+        .limit(1);
+      return s || null;
+    }, null),
+    safeDbQuery(async () => {
+      return await db
+        .select()
+        .from(offers)
+        .where(and(eq(offers.cafeId, cafe.id), eq(offers.isActive, true)))
+        .orderBy(asc(offers.createdAt));
+    }, []),
+    safeDbQuery(async () => {
+      return await db
+        .select()
+        .from(menuItems)
+        .where(and(eq(menuItems.cafeId, cafe.id), eq(menuItems.isAvailable, true)))
+        .orderBy(asc(menuItems.price))
+        .limit(8);
+    }, []),
+    safeDbQuery(async () => {
+      return await db
+        .select()
+        .from(tables)
+        .where(and(eq(tables.cafeId, cafe.id), eq(tables.isActive, true)))
+        .orderBy(asc(tables.tableNumber));
+    }, []),
+    safeDbQuery(async () => {
+      return await db
+        .select({ id: categories.id, name: categories.name })
+        .from(categories)
+        .where(and(eq(categories.cafeId, cafe.id), eq(categories.isActive, true)));
+    }, []),
+    safeDbQuery(async () => {
+      return await db
+        .select({
+          id: menuItems.id,
+          name: menuItems.name,
+          categoryId: menuItems.categoryId,
+        })
+        .from(menuItems)
+        .where(and(eq(menuItems.cafeId, cafe.id), eq(menuItems.isAvailable, true)));
+    }, []),
+    qrParam
+      ? safeDbQuery(async () => {
+          const [t] = await db
+            .select()
+            .from(tables)
+            .where(and(eq(tables.cafeId, cafe.id), eq(tables.qrIdentifier, qrParam)))
+            .limit(1);
+          return t || null;
+        }, null)
+      : Promise.resolve(null),
+  ]);
 
   const menuThemeId =
     themeQueryParam ||
@@ -100,70 +158,9 @@ export default async function CustomerCartPage({
     colorScheme: "light",
   };
 
-  // Resolve active cafe offers
-  const offersList = await safeDbQuery(async () => {
-    return await db
-      .select()
-      .from(offers)
-      .where(and(eq(offers.cafeId, cafe.id), eq(offers.isActive, true)))
-      .orderBy(asc(offers.createdAt));
-  }, []);
-
-  // Resolve quick add-on items (low-cost sides, cookies, dips, beverages)
-  const quickAddItems = await safeDbQuery(async () => {
-    return await db
-      .select()
-      .from(menuItems)
-      .where(and(eq(menuItems.cafeId, cafe.id), eq(menuItems.isAvailable, true)))
-      .orderBy(asc(menuItems.price))
-      .limit(8);
-  }, []);
-
-  // Resolve all cafe configured tables for table dropdown
-  const allCafeTables = await safeDbQuery(async () => {
-    return await db
-      .select()
-      .from(tables)
-      .where(and(eq(tables.cafeId, cafe.id), eq(tables.isActive, true)))
-      .orderBy(asc(tables.tableNumber));
-  }, []);
-
-  // Resolve all active categories for offer scope matching
-  const allCategories = await safeDbQuery(async () => {
-    return await db
-      .select({ id: categories.id, name: categories.name })
-      .from(categories)
-      .where(and(eq(categories.cafeId, cafe.id), eq(categories.isActive, true)));
-  }, []);
-
-  // Resolve all active menu items for offer scope matching
-  const allMenuItems = await safeDbQuery(async () => {
-    return await db
-      .select({
-        id: menuItems.id,
-        name: menuItems.name,
-        categoryId: menuItems.categoryId,
-      })
-      .from(menuItems)
-      .where(and(eq(menuItems.cafeId, cafe.id), eq(menuItems.isAvailable, true)));
-  }, []);
-
   // Resolve dining table if table or qr param passed
-  let resolvedTable = null;
-  let isFromQrScan = false;
-  if (qrParam) {
-    resolvedTable = await safeDbQuery(async () => {
-      const [t] = await db
-        .select()
-        .from(tables)
-        .where(and(eq(tables.cafeId, cafe.id), eq(tables.qrIdentifier, qrParam)))
-        .limit(1);
-      return t || null;
-    }, null);
-    if (resolvedTable) {
-      isFromQrScan = true;
-    }
-  }
+  let resolvedTable = qrTable;
+  let isFromQrScan = Boolean(qrTable);
 
   // Match table from QR scan or table query parameter
   if (!resolvedTable && tableParam) {
