@@ -1049,6 +1049,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveFromCart}
         onOpenAuth={() => setIsProfileOpen(true)}
+        onApplyPromo={handleClaimOffer}
         onPlaceOrder={handlePlaceOrder}
       />
 

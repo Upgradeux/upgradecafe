@@ -60,8 +60,8 @@ export const FeaturedSectionRenderer: React.FC<FeaturedSectionRendererProps> = (
           id: slide.id || `custom_${idx}`,
           sourceType: "CUSTOM",
           item: null,
-          badge: slide.badgeText || "Weekend Special",
-          title: slide.customTitle || "Special Showcase",
+          badge: slide.badgeText || "",
+          title: slide.customTitle || "Featured item",
           subtitle: slide.customSubtitle || "Handcrafted café favorite",
           price: slide.price ?? 0,
           actionText: slide.actionText || "Explore",
@@ -84,8 +84,8 @@ export const FeaturedSectionRenderer: React.FC<FeaturedSectionRendererProps> = (
         id: slide.id || `item_${idx}`,
         sourceType: "MENU_ITEM",
         item: resolvedItem || null,
-        badge: slide.badgeText || section.config?.badgeText || section.title || "Weekend Special",
-        title: slide.customTitle || resolvedItem?.name || "Special Item",
+        badge: slide.badgeText || section.config?.badgeText || section.title || "",
+        title: slide.customTitle || resolvedItem?.name || "Featured item",
         subtitle:
           slide.customSubtitle ||
           section.config?.customSubtitle ||
@@ -99,7 +99,7 @@ export const FeaturedSectionRenderer: React.FC<FeaturedSectionRendererProps> = (
             ? slide.customImageUrl
             : resolvedItem
             ? getMenuItemImageUrl(resolvedItem.imageKey, resolvedItem.slug, resolvedItem.name)
-            : "/placeholder.png",
+            : "/images/menu-item-placeholder.svg",
       };
     });
   } else {
@@ -122,11 +122,11 @@ export const FeaturedSectionRenderer: React.FC<FeaturedSectionRendererProps> = (
           id: "default_single",
           sourceType: "MENU_ITEM",
           item: singleItem,
-          badge: section.config?.badgeText || section.title || "Weekend Special",
+          badge: section.config?.badgeText || section.title || "",
           title: section.config?.customTitle || singleItem.name,
           subtitle: section.config?.customSubtitle || section.subtitle || singleItem.description || "",
           price: singleItem.price,
-          actionText: section.config?.actionText || "Try it today",
+          actionText: section.config?.actionText || "View item",
           imageUrl: itemImg,
         },
       ];

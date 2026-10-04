@@ -38,8 +38,9 @@ export const ActivityLogTable: React.FC<ActivityLogTableProps> = ({
   const [inspectLog, setInspectLog] = useState<ActivityLogItem | null>(null);
 
   const getActionBadgeVariant = (
-    action: string
+    action?: string
   ): "primary" | "active" | "grace" | "suspended" | "neutral" => {
+    if (!action) return "neutral";
     if (action.includes("CREATE")) return "active";
     if (action.includes("SUSPEND")) return "suspended";
     if (action.includes("REACTIVATE")) return "active";
@@ -86,12 +87,12 @@ export const ActivityLogTable: React.FC<ActivityLogTableProps> = ({
 
                   <TableCell>
                     <Badge variant={getActionBadgeVariant(log.action)}>
-                      {log.action.replace("ADMIN_", "")}
+                      {log.action ? log.action.replace("ADMIN_", "") : "ACTIVITY"}
                     </Badge>
                   </TableCell>
 
                   <TableCell className="text-xs font-medium">
-                    {log.entityType} ({log.entityId.slice(0, 8)}...)
+                    {log.entityType || "Item"} ({log.entityId ? `${log.entityId.slice(0, 8)}...` : "—"})
                   </TableCell>
 
                   <TableCell>

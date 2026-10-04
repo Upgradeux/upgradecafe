@@ -184,7 +184,7 @@ export const DigitalReceiptCard: React.FC<DigitalReceiptCardProps> = ({
                 className="text-xl sm:text-2xl font-black tracking-tight text-[#1C1D1A] leading-tight font-serif"
                 style={{ fontFamily: typography.headingFontVar }}
               >
-                {cafe.name || "The Roasted Bean"}
+                {cafe.name}
               </h1>
             )}
 

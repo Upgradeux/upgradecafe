@@ -95,9 +95,9 @@ export const CustomerProfileModal: React.FC<CustomerProfileModalProps> = ({
       phone: phone.trim(),
       email: email.trim() || undefined,
       avatarUrl: avatarUrl,
-      loyaltyPoints: profile?.loyaltyPoints || 50, // Welcome 50 points
+      loyaltyPoints: profile?.loyaltyPoints ?? 0,
       isGuest: false,
-      memberTier: profile?.memberTier || "SILVER",
+      memberTier: profile?.memberTier,
     };
 
     onSaveProfile(newProfile);

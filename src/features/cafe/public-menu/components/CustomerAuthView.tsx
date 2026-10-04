@@ -21,6 +21,52 @@ import {
   IconAlertCircle,
   IconClock,
 } from "@tabler/icons-react";
+import { getFirebaseAuth } from "@/lib/firebase/config";
+import {
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  type ConfirmationResult,
+} from "firebase/auth";
+
+function getFriendlyErrorMessage(err: any): string {
+  const code = (err?.code || "").toLowerCase();
+  const rawMsg = String(err?.message || "");
+
+  if (code.includes("too-many-requests") || rawMsg.includes("too-many-requests")) {
+    return "Too many attempts. Please wait a few minutes before trying again, or use Email login.";
+  }
+  if (code.includes("invalid-phone-number") || rawMsg.includes("invalid-phone-number")) {
+    return "Please enter a valid 10-digit mobile number.";
+  }
+  if (code.includes("quota-exceeded") || rawMsg.includes("quota-exceeded")) {
+    return "SMS limit reached for now. Please try again later or log in with Email.";
+  }
+  if (code.includes("invalid-verification-code") || rawMsg.includes("invalid-verification-code")) {
+    return "Incorrect 6-digit verification code. Please check and try again.";
+  }
+  if (code.includes("code-expired") || rawMsg.includes("code-expired")) {
+    return "The verification code has expired. Please tap 'Resend Code'.";
+  }
+  if (code.includes("captcha-check-failed") || rawMsg.includes("captcha-check-failed")) {
+    return "Security verification could not be completed. Please refresh and try again.";
+  }
+  if (code.includes("network-request-failed") || rawMsg.includes("network-request-failed")) {
+    return "Network error. Please check your internet connection and try again.";
+  }
+  if (code.includes("operation-not-allowed") || rawMsg.includes("operation-not-allowed")) {
+    return "SMS login is temporarily unavailable. Please try using Email login.";
+  }
+  if (code.includes("app-not-authorized") || rawMsg.includes("app-not-authorized")) {
+    return "This domain is not authorized for SMS. Please use Email login.";
+  }
+
+  // Scrub any internal/developer Firebase error format
+  if (rawMsg.startsWith("Firebase:") || rawMsg.includes("(auth/")) {
+    return "Unable to process verification right now. Please try again or use Email.";
+  }
+
+  return rawMsg || "Something went wrong. Please try again.";
+}
 
 export interface CustomerAuthViewProps {
   cafe: Cafe;
@@ -57,15 +103,17 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
     "",
     "",
   ]);
-  const [resendCooldown, setResendCooldown] = useState(30);
+  const [resendCooldown, setResendCooldown] = useState(300);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [otpErrorMessage, setOtpErrorMessage] = useState<string | null>(null);
 
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
 
-  // Timer countdown for strict 30-second OTP expiration
+  // Timer countdown matches the five-minute expiry enforced by the server.
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (step === "VERIFY_OTP" && resendCooldown > 0) {
@@ -73,7 +121,7 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
         setResendCooldown((prev) => {
           if (prev <= 1) {
             setOtpErrorMessage(
-              "Verification code expired after 30 seconds. Please request a new code.",
+              "Verification code expired after 5 minutes. Please request a new code.",
             );
             return 0;
           }
@@ -102,20 +150,9 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
           id: user.id || `google_${Date.now()}`,
           name: user.name || "Café Member",
           email: user.email || undefined,
-          phone: (user as any).phone || "+91 98765 43210",
-          avatarUrl:
-            user.image ||
-            "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=240&auto=format&fit=crop&q=80",
-          dateOfBirth: "14 March 2002",
-          loyaltyPoints: 480,
-          stampsCollected: 6,
-          stampsRequired: 8,
+          phone: (user as any).phoneNumber || undefined,
+          avatarUrl: user.image || undefined,
           isGuest: false,
-          memberTier: "GOLD",
-          earnedBadges: ["bean_there", "sip_happens", "main_character"],
-          selectedBadges: ["bean_there", "sip_happens", "main_character"],
-          unlockedStickers: ["torn_note", "crown", "cafe_polaroid"],
-          stickerPlacements: { top_left: "torn_note", around_avatar: "crown" },
         };
       }
 
@@ -125,7 +162,7 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
     }
   }, [isGoogleLoading, sessionData, cafe.slug, onSuccess]);
 
-  // Handle Real Google Sign-In with Better Auth & seamless fallback
+  // Start a real Better Auth Google OAuth flow.
   const handleGoogleSignIn = async () => {
     try {
       setIsGoogleLoading(true);
@@ -136,34 +173,20 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
       if (res && (res as any).url) {
         return;
       }
-    } catch (err: any) {
-      console.warn("Better Auth Google sign-in falling back to Google profile:", err);
+      setIsGoogleLoading(false);
+      toast({
+        title: "Google sign-in unavailable",
+        description: "Google authentication is not configured for this deployment.",
+        variant: "error",
+      });
+    } catch {
+      setIsGoogleLoading(false);
+      toast({
+        title: "Google sign-in failed",
+        description: "Please try again or use your email address or phone number.",
+        variant: "error",
+      });
     }
-
-    // Verified Google Customer profile fallback (ensures Google login works in all environments)
-    const googleProfile: CustomerProfile = {
-      id: `google_${Date.now()}`,
-      name: "Rohan Mehta",
-      email: "rohan.mehta@gmail.com",
-      phone: "+91 98765 43210",
-      avatarUrl:
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=240&auto=format&fit=crop&q=80",
-      dateOfBirth: "14 March 2002",
-      loyaltyPoints: 480,
-      stampsCollected: 6,
-      stampsRequired: 7,
-      isGuest: false,
-      memberTier: "GOLD",
-    };
-
-    setActiveCustomerProfile(cafe.slug, googleProfile);
-    setIsGoogleLoading(false);
-    toast({
-      title: "Welcome back, Rohan!",
-      description: "Signed in with Google. Your perks & 480 points are active.",
-      variant: "success",
-    });
-    onSuccess(googleProfile);
   };
 
   // Validate Indian Phone Number or Email
@@ -208,7 +231,7 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
     }
   };
 
-  // Send real server-side OTP with 30s TTL
+  // Request a server-side OTP with a five-minute TTL.
   const handleSendOtp = async (overrideTarget?: string) => {
     const targetToValidate = overrideTarget || identifier;
     const validation = validateInput(targetToValidate, inputType);
@@ -228,42 +251,88 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
     setIsSendingOtp(true);
 
     try {
-      const res = await fetch("/api/auth/customer/otp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target: validation.formatted,
-          cafeName: cafe.name,
-        }),
-      });
+      if (inputType === "phone") {
+        const auth = getFirebaseAuth();
 
-      const data = await res.json();
+        // Clear any previous verifier widget to ensure a fresh reCAPTCHA token
+        if (recaptchaVerifierRef.current) {
+          try {
+            recaptchaVerifierRef.current.clear();
+          } catch {}
+          recaptchaVerifierRef.current = null;
+        }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Failed to send verification code");
+        const verifier = new RecaptchaVerifier(
+          auth,
+          "firebase-recaptcha-container",
+          { size: "invisible" }
+        );
+        recaptchaVerifierRef.current = verifier;
+        await verifier.render();
+
+        const cleanDigits = validation.formatted.replace(/\D/g, "");
+        const e164Number = `+91${cleanDigits.slice(-10)}`;
+        const confirmationResult = await signInWithPhoneNumber(
+          auth,
+          e164Number,
+          verifier
+        );
+        confirmationResultRef.current = confirmationResult;
+
+        setResendCooldown(300);
+        setOtpDigits(["", "", "", "", "", ""]);
+        setStep("VERIFY_OTP");
+
+        toast({
+          title: "Verification Code Sent",
+          description: `SMS verification code dispatched to ${validation.formatted}`,
+          variant: "success",
+        });
+      } else {
+        const res = await fetch("/api/auth/customer/otp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target: validation.formatted,
+            cafeSlug: cafe.slug,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || "Failed to send verification code");
+        }
+
+        setResendCooldown(data.expiresInSeconds || 300);
+        setOtpDigits(["", "", "", "", "", ""]);
+        setStep("VERIFY_OTP");
+
+        toast({
+          title: "Verification Code Sent",
+          description:
+            data.message ||
+            "Your verification code has been sent.",
+          variant: "success",
+        });
       }
-
-      setResendCooldown(data.expiresInSeconds || 300);
-      setOtpDigits(["", "", "", "", "", ""]);
-      setStep("VERIFY_OTP");
-
-      toast({
-        title: "Verification Code Sent",
-        description:
-          data.message ||
-          "Your 6-digit CAFEFLOW verification code has been dispatched via MSG91 SMS.",
-        variant: "success",
-      });
 
       setTimeout(() => {
         otpInputsRef.current[0]?.focus();
       }, 150);
     } catch (err: any) {
       console.error("Error sending OTP:", err);
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear();
+          recaptchaVerifierRef.current = null;
+        } catch {}
+      }
+      const errorDescription = getFriendlyErrorMessage(err);
+      setInputError(errorDescription);
       toast({
         title: "Could Not Send Code",
-        description:
-          err?.message || "Failed to send verification code. Please try again.",
+        description: errorDescription,
         variant: "error",
       });
     } finally {
@@ -323,7 +392,7 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
     }
   };
 
-  // Real Server Verification with strict 30s check
+  // Verify the code against the server-side persisted OTP record.
   const verifyAndLogin = async (codeToVerify?: string) => {
     const code = codeToVerify || otpDigits.join("");
     if (code.length < 6) {
@@ -350,37 +419,69 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
     const validation = validateInput(identifier, inputType);
 
     try {
-      const res = await fetch("/api/auth/customer/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target: validation.formatted,
-          code,
-          name: fullName,
-        }),
-      });
+      let data: any;
 
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        if (data.error === "EXPIRED") {
-          setOtpErrorMessage(
-            "Verification code has expired (30-second limit). Please tap 'Resend Code'.",
-          );
+      if (inputType === "phone") {
+        if (!confirmationResultRef.current) {
+          setOtpErrorMessage("Verification session expired. Please tap 'Resend Code'.");
           toast({
-            title: "Code Expired",
-            description: data.message || "Code expired after 30 seconds.",
+            title: "Session Expired",
+            description: "Please tap 'Resend Code' to receive a new code.",
             variant: "error",
           });
-        } else {
-          setOtpErrorMessage(data.message || "Invalid verification code.");
-          toast({
-            title: "Verification Failed",
-            description: data.message || "Incorrect code. Please try again.",
-            variant: "error",
-          });
+          setIsVerifying(false);
+          return;
         }
-        return;
+
+        const credential = await confirmationResultRef.current.confirm(code);
+        const res = await fetch("/api/auth/customer/firebase/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: validation.formatted,
+            name: fullName,
+            cafeSlug: cafe.slug,
+            firebaseUid: credential.user.uid,
+          }),
+        });
+
+        data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || "Failed to verify phone number");
+        }
+      } else {
+        const res = await fetch("/api/auth/customer/otp/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target: validation.formatted,
+            code,
+            name: fullName,
+          }),
+        });
+
+        data = await res.json();
+
+        if (!res.ok || !data.success) {
+          if (data.error === "EXPIRED") {
+            setOtpErrorMessage(
+              "Verification code has expired. Please tap 'Resend Code'.",
+            );
+            toast({
+              title: "Code Expired",
+              description: data.message || "Code expired. Please request a new one.",
+              variant: "error",
+            });
+          } else {
+            setOtpErrorMessage(data.message || "Invalid verification code.");
+            toast({
+              title: "Verification Failed",
+              description: data.message || "Incorrect code. Please try again.",
+              variant: "error",
+            });
+          }
+          return;
+        }
       }
 
       // Code is valid! Retrieve existing customer account or build new profile
@@ -391,11 +492,15 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
       if (existing) {
         profile = {
           ...existing,
+          id: data.customer.id,
+          name: fullName.trim() || existing.name || data.customer.name,
+          phone: data.customer.phone || existing.phone,
+          email: data.customer.email || existing.email,
           isGuest: false,
         };
         toast({
           title: `Welcome back, ${profile.name}!`,
-          description: `All your loyalty points (${profile.loyaltyPoints} pts) and stamps are restored.`,
+          description: "Your verified profile has been restored.",
           variant: "success",
         });
       } else {
@@ -406,50 +511,16 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
             : `Café Member ${targetKey.replace(/\s+/g, "").slice(-4)}`);
 
         profile = {
-          id: `cust_${Date.now()}`,
-          name: cleanName,
-          phone: targetKey.includes("@") ? "+91 98765 43210" : targetKey,
-          email: targetKey.includes("@") ? targetKey : undefined,
-          avatarUrl:
-            "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=240&auto=format&fit=crop&q=80",
-          dateOfBirth: "14 March 2002",
-          loyaltyPoints: 480,
-          stampsCollected: 6,
-          stampsRequired: 8,
+          id: data.customer.id,
+          name: data.customer.name || cleanName,
+          phone: data.customer.phone,
+          email: data.customer.email,
           isGuest: false,
-          memberTier: "GOLD",
-          earnedBadges: [
-            "bean_there",
-            "sip_happens",
-            "main_character",
-            "cafe_core",
-            "brew_crew",
-            "certified_sipper",
-            "latte_lover",
-            "cafe_royalty",
-          ],
-          selectedBadges: ["bean_there", "sip_happens", "main_character"],
-          unlockedStickers: [
-            "torn_note",
-            "crown",
-            "cafe_polaroid",
-            "iced_cup",
-            "people_tag",
-            "croissant",
-          ],
-          stickerPlacements: {
-            top_left: "torn_note",
-            around_avatar: "crown",
-            top_right: "cafe_polaroid",
-            bottom_left: "iced_cup",
-            bottom_right: "people_tag",
-          },
         };
 
         toast({
-          title: `Welcome, ${cleanName}!`,
-          description:
-            "Verified successfully! 480 welcome points added to your rewards wallet.",
+          title: `Welcome, ${profile.name}!`,
+          description: "Your contact information has been verified.",
           variant: "success",
         });
       }
@@ -458,9 +529,13 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
       onSuccess(profile);
     } catch (err: any) {
       console.error("Verification error:", err);
-      setOtpErrorMessage(
-        err?.message || "Failed to verify code. Please try again.",
-      );
+      const userMsg = getFriendlyErrorMessage(err);
+      setOtpErrorMessage(userMsg);
+      toast({
+        title: "Verification Failed",
+        description: userMsg,
+        variant: "error",
+      });
     } finally {
       setIsVerifying(false);
     }
@@ -477,6 +552,8 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
         isModal ? "p-0" : "min-h-screen"
       } bg-white flex flex-col justify-start select-none relative overflow-x-hidden`}
     >
+      {/* Invisible Firebase reCAPTCHA container */}
+      <div id="firebase-recaptcha-container" />
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           TOP HERO: TALLER SUN-DRENCHED AESTHETIC CAFE SCENE (MORE IMAGE VISIBILITY)
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}

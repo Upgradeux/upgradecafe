@@ -1,123 +1,133 @@
-import crypto from "crypto";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { verifications } from "@/lib/db/schema/auth-tables";
 
-interface OtpEntry {
-  code: string;
-  target: string;
-  expiresAt: number;
-  attemptsLeft: number;
-  createdAt: number;
-}
+const OTP_TTL_SECONDS = 300;
+const OTP_MAX_ATTEMPTS = 3;
+const OTP_SECRET =
+  process.env.BETTER_AUTH_SECRET || "local-only-upgradecafe-otp-secret-change-before-production";
 
-// In-memory server-side OTP cache (persists across requests in node process)
-// Note: In serverless, globalThis preserves state per lambda container instance
-const globalOtpStore = globalThis as unknown as {
-  _customerOtpMap?: Map<string, OtpEntry>;
-  _customerLockoutMap?: Map<string, number>;
+type VerifyOtpResult = {
+  success: boolean;
+  error?: "EXPIRED" | "INVALID" | "LOCKED" | "NOT_FOUND";
+  message: string;
 };
 
-if (!globalOtpStore._customerOtpMap) {
-  globalOtpStore._customerOtpMap = new Map();
-}
-
-if (!globalOtpStore._customerLockoutMap) {
-  globalOtpStore._customerLockoutMap = new Map();
-}
-
-const otpMap = globalOtpStore._customerOtpMap;
-const lockoutMap = globalOtpStore._customerLockoutMap;
-
-/**
- * Generate a cryptographically random 6-digit OTP
- */
 export function generateSecureOtp(): string {
-  return crypto.randomInt(100000, 999999).toString();
+  return randomInt(100000, 1000000).toString();
 }
 
-/**
- * Store an OTP with a strict 30-second TTL
- */
-export function storeOtp(target: string, code: string, ttlSeconds = 300): { expiresAt: number } {
-  const normalized = target.trim().toLowerCase().replace(/\s+/g, "");
-  const now = Date.now();
-  const expiresAt = now + ttlSeconds * 1000;
+export function normalizeOtpTarget(target: string): string {
+  const cleanTarget = target.trim();
+  if (cleanTarget.includes("@")) return cleanTarget.toLowerCase();
+  const digits = cleanTarget.replace(/\D/g, "");
+  return `91${digits.length > 10 ? digits.slice(-10) : digits}`;
+}
 
-  otpMap.set(normalized, {
-    code,
-    target: normalized,
-    expiresAt,
-    attemptsLeft: 3,
-    createdAt: now,
-  });
+function getVerificationId(target: string): string {
+  const digest = createHmac("sha256", OTP_SECRET).update(normalizeOtpTarget(target)).digest("hex");
+  return `customer-otp:${digest}`;
+}
+
+function hashCode(code: string): string {
+  return createHmac("sha256", OTP_SECRET).update(code).digest("hex");
+}
+
+export async function storeOtp(
+  target: string,
+  code: string,
+  ttlSeconds = OTP_TTL_SECONDS
+): Promise<{ expiresAt: Date }> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+  const id = getVerificationId(target);
+  const value = JSON.stringify({ codeHash: hashCode(code), attemptsLeft: OTP_MAX_ATTEMPTS });
+
+  await db
+    .insert(verifications)
+    .values({ id, identifier: id, value, expiresAt, createdAt: now, updatedAt: now })
+    .onConflictDoUpdate({
+      target: verifications.id,
+      set: { identifier: id, value, expiresAt, updatedAt: now },
+    });
 
   return { expiresAt };
 }
 
-/**
- * Verify an OTP. Enforces strict 30-second expiry and attempt rate-limiting.
- */
-export function verifyOtp(
-  target: string,
-  submittedCode: string
-): { success: boolean; error?: "EXPIRED" | "INVALID" | "LOCKED" | "NOT_FOUND"; message: string } {
-  const normalized = target.trim().toLowerCase().replace(/\s+/g, "");
-  const now = Date.now();
+export async function removeOtp(target: string): Promise<void> {
+  await db.delete(verifications).where(eq(verifications.id, getVerificationId(target)));
+}
 
-  // Check lockout
-  const lockoutUntil = lockoutMap.get(normalized);
-  if (lockoutUntil && now < lockoutUntil) {
-    const minutesLeft = Math.ceil((lockoutUntil - now) / 60000);
-    return {
-      success: false,
-      error: "LOCKED",
-      message: `Too many failed attempts. Locked out for ${minutesLeft} more minute(s).`,
-    };
-  }
+export async function verifyOtp(target: string, submittedCode: string): Promise<VerifyOtpResult> {
+  const id = getVerificationId(target);
+  return db.transaction(async (tx) => {
+    const [entry] = await tx
+      .select()
+      .from(verifications)
+      .where(eq(verifications.id, id))
+      .for("update")
+      .limit(1);
 
-  const entry = otpMap.get(normalized);
-  if (!entry) {
-    return {
-      success: false,
-      error: "NOT_FOUND",
-      message: "No active verification code found. Please request a new code.",
-    };
-  }
-
-  // Strict 30-second expiration check
-  if (now > entry.expiresAt) {
-    otpMap.delete(normalized);
-    return {
-      success: false,
-      error: "EXPIRED",
-      message: "Verification code has expired (30-second limit). Please request a new code.",
-    };
-  }
-
-  // Code validation
-  if (entry.code !== submittedCode.trim()) {
-    entry.attemptsLeft -= 1;
-    if (entry.attemptsLeft <= 0) {
-      otpMap.delete(normalized);
-      // Lock out for 10 minutes
-      lockoutMap.set(normalized, now + 10 * 60 * 1000);
+    if (!entry) {
       return {
         success: false,
-        error: "LOCKED",
-        message: "Maximum verification attempts exceeded. Please try again after 10 minutes.",
+        error: "NOT_FOUND",
+        message: "No active verification code found. Please request a new code.",
       };
     }
 
-    return {
-      success: false,
-      error: "INVALID",
-      message: `Incorrect code. ${entry.attemptsLeft} attempt(s) remaining.`,
-    };
-  }
+    if (entry.expiresAt.getTime() <= Date.now()) {
+      await tx.delete(verifications).where(eq(verifications.id, id));
+      return {
+        success: false,
+        error: "EXPIRED",
+        message: "Verification code has expired. Please request a new code.",
+      };
+    }
 
-  // Success! Invalidate immediately to prevent reuse
-  otpMap.delete(normalized);
-  lockoutMap.delete(normalized);
-  return {
-    success: true,
-    message: "Code verified successfully.",
-  };
+    let stored: { codeHash?: string; attemptsLeft?: number };
+    try {
+      stored = JSON.parse(entry.value);
+    } catch {
+      await tx.delete(verifications).where(eq(verifications.id, id));
+      return {
+        success: false,
+        error: "NOT_FOUND",
+        message: "No active verification code found. Please request a new code.",
+      };
+    }
+
+    const expectedHash = stored.codeHash;
+    const receivedHash = hashCode(submittedCode.trim());
+    const isValid =
+      typeof expectedHash === "string" &&
+      /^[a-f0-9]{64}$/.test(expectedHash) &&
+      timingSafeEqual(Buffer.from(expectedHash, "hex"), Buffer.from(receivedHash, "hex"));
+
+    if (!isValid) {
+      const attemptsLeft = Math.max(0, (stored.attemptsLeft ?? 1) - 1);
+      if (attemptsLeft === 0) {
+        await tx.delete(verifications).where(eq(verifications.id, id));
+        return {
+          success: false,
+          error: "LOCKED",
+          message: "Maximum verification attempts exceeded. Please request a new code.",
+        };
+      }
+
+      await tx
+        .update(verifications)
+        .set({ value: JSON.stringify({ ...stored, attemptsLeft }), updatedAt: new Date() })
+        .where(eq(verifications.id, id));
+      return {
+        success: false,
+        error: "INVALID",
+        message: `Incorrect code. ${attemptsLeft} attempt(s) remaining.`,
+      };
+    }
+
+    await tx.delete(verifications).where(eq(verifications.id, id));
+    return { success: true, message: "Code verified successfully." };
+  });
 }

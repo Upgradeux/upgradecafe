@@ -25,6 +25,7 @@ interface CustomerCartDrawerProps {
   isPlacingOrder: boolean;
   allowOrderNotes?: boolean;
   enableOffers?: boolean;
+  onApplyPromo?: (code: string) => void;
   onClose: () => void;
   onUpdateQuantity: (cartItemId: string, newQty: number) => void;
   onRemoveItem: (cartItemId: string) => void;
@@ -48,6 +49,7 @@ export const CustomerCartDrawer: React.FC<CustomerCartDrawerProps> = ({
   isPlacingOrder,
   allowOrderNotes = true,
   enableOffers = true,
+  onApplyPromo,
   onClose,
   onUpdateQuantity,
   onRemoveItem,
@@ -65,50 +67,11 @@ export const CustomerCartDrawer: React.FC<CustomerCartDrawerProps> = ({
   const [orderNotes, setOrderNotes] = useState("");
   const [paymentPreference, setPaymentPreference] = useState<"COUNTER" | "UPI_NOW">("COUNTER");
 
-  // Promo code state
   const [promoInput, setPromoInput] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<{
-    code: string;
-    discount: number;
-    label: string;
-  } | null>(null);
-  const [promoError, setPromoError] = useState<string | null>(null);
-
   const subtotal = cart.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
-  const discountAmount = appliedPromo ? Math.min(subtotal, appliedPromo.discount) : 0;
-  const taxableAmount = Math.max(0, subtotal - discountAmount);
-  const tax = Math.round(taxableAmount * 0.05);
-  const total = taxableAmount + tax;
+  const tax = Math.round(subtotal * 0.05);
+  const total = subtotal + tax;
 
-  const handleApplyPromo = (codeToApply: string) => {
-    const code = codeToApply.trim().toUpperCase();
-    if (!code) return;
-
-    if (code === "WELCOME10") {
-      const disc = Math.round(subtotal * 0.1);
-      setAppliedPromo({ code, discount: disc, label: "10% OFF Welcome Bonus" });
-      setPromoError(null);
-    } else if (code === "FLAT50") {
-      if (subtotal < 250) {
-        setPromoError("FLAT50 requires an order above ₹250");
-        return;
-      }
-      setAppliedPromo({ code, discount: 50, label: "₹50 Flat Discount" });
-      setPromoError(null);
-    } else if (code === "CHEF20") {
-      const disc = Math.round(subtotal * 0.2);
-      setAppliedPromo({ code, discount: disc, label: "20% OFF Chef's Special" });
-      setPromoError(null);
-    } else {
-      setPromoError("Code not applicable for this café.");
-    }
-  };
-
-  const handleRemovePromo = () => {
-    setAppliedPromo(null);
-    setPromoError(null);
-    setPromoInput("");
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +83,6 @@ export const CustomerCartDrawer: React.FC<CustomerCartDrawerProps> = ({
       customerName: customerProfile?.name || guestName.trim() || (orderType === "DINE_IN" ? "Dine-in Guest" : "Takeaway Guest"),
       customerPhone: customerProfile?.phone || guestPhone.trim(),
       notes: orderNotes.trim(),
-      discount: discountAmount,
       paymentPreference,
     });
   };
@@ -314,77 +276,29 @@ export const CustomerCartDrawer: React.FC<CustomerCartDrawerProps> = ({
           {/* Promo / Coupon Code Section */}
           {enableOffers && (
             <div className="p-2.5 rounded-md bg-[var(--color-background)] border border-[var(--color-border)] space-y-2 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-[var(--color-foreground)] flex items-center gap-1.5">
-                  <IconTag className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                  <span>Café Promo & Offers</span>
-                </span>
-                {appliedPromo && (
-                  <button
-                    type="button"
-                    onClick={handleRemovePromo}
-                    className="text-[10px] text-red-500 hover:underline font-medium"
-                  >
-                    Remove
-                  </button>
-                )}
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-foreground)]">
+                <IconTag className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                <span>Caf? Promo &amp; Offers</span>
               </div>
-
-              {appliedPromo ? (
-                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-xs">
-                  <div className="flex items-center gap-1.5 text-emerald-700">
-                    <IconCheck className="w-3.5 h-3.5" />
-                    <span className="font-semibold font-mono">{appliedPromo.code}</span>
-                    <span className="text-[10px] opacity-80">({appliedPromo.label})</span>
-                  </div>
-                  <span className="font-mono font-bold text-emerald-600">
-                    -₹{discountAmount}
-                  </span>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Enter promo code (e.g. WELCOME10)"
-                      value={promoInput}
-                      onChange={(e) => {
-                        setPromoInput(e.target.value);
-                        setPromoError(null);
-                      }}
-                      className="flex-1 px-2.5 py-1 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] uppercase font-mono font-medium"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleApplyPromo(promoInput)}
-                      className="px-3 py-1 rounded-md text-xs font-medium bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)] cursor-pointer transition-colors shadow-xs"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                  {promoError && (
-                    <p className="text-[10px] text-red-500 font-medium">{promoError}</p>
-                  )}
-                  {/* Quick Code suggestions */}
-                  <div className="flex items-center gap-1.5 pt-0.5">
-                    <span className="text-[9.5px] text-[var(--color-muted)]">Popular:</span>
-                    <button
-                      type="button"
-                      onClick={() => handleApplyPromo("WELCOME10")}
-                      className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] text-[var(--color-foreground)]"
-                    >
-                      WELCOME10
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleApplyPromo("FLAT50")}
-                      className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] text-[var(--color-foreground)]"
-                    >
-                      FLAT50
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  placeholder="Enter an active offer code"
+                  value={promoInput}
+                  onChange={(e) => setPromoInput(e.target.value)}
+                  className="flex-1 px-2.5 py-1 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] uppercase font-mono font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (promoInput.trim()) onApplyPromo?.(promoInput.trim());
+                  }}
+                  className="px-3 py-1 rounded-md text-xs font-medium bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)] cursor-pointer transition-colors shadow-xs"
+                >
+                  Apply
+                </button>
+              </div>
+              <p className="text-[10px] text-[var(--color-muted)]">Offers are checked against this caf?'s active promotions.</p>
             </div>
           )}
 
@@ -450,12 +364,6 @@ export const CustomerCartDrawer: React.FC<CustomerCartDrawerProps> = ({
               <span>Items Subtotal</span>
               <span className="font-mono">₹{subtotal.toLocaleString("en-IN")}</span>
             </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-xs text-emerald-600 font-medium">
-                <span>Special Promo Discount</span>
-                <span className="font-mono">- ₹{discountAmount.toLocaleString("en-IN")}</span>
-              </div>
-            )}
             <div className="flex justify-between text-xs text-[var(--color-muted)]">
               <span>GST / Taxes (5%)</span>
               <span className="font-mono">₹{tax.toLocaleString("en-IN")}</span>

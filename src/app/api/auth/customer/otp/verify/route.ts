@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyOtp } from "@/lib/auth/otp-store";
+import { normalizeOtpTarget, verifyOtp } from "@/lib/auth/otp-store";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +21,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = verifyOtp(target, cleanCode);
+    const normalizedTarget = normalizeOtpTarget(String(target));
+    const result = await verifyOtp(normalizedTarget, cleanCode);
 
     if (!result.success) {
       return NextResponse.json(
@@ -35,16 +36,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Success! Build authenticated customer payload
-    const isEmail = target.includes("@");
-    const cleanPhone = !isEmail ? target : undefined;
-    const cleanEmail = isEmail ? target : undefined;
+    const isEmail = normalizedTarget.includes("@");
+    const cleanPhone = !isEmail ? `+${normalizedTarget}` : undefined;
+    const cleanEmail = isEmail ? normalizedTarget : undefined;
 
     return NextResponse.json({
       success: true,
       message: "Successfully verified.",
       customer: {
         id: `cust_${Date.now()}`,
-        name: name || (cleanEmail ? cleanEmail.split("@")[0] : `Member ${cleanPhone?.slice(-4) || "8888"}`),
+        name: typeof name === "string" && name.trim()
+          ? name.trim().slice(0, 100)
+          : cleanEmail
+            ? cleanEmail.split("@")[0]
+            : `Member ${cleanPhone?.slice(-4)}`,
         email: cleanEmail,
         phone: cleanPhone,
         isGuest: false,

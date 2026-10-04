@@ -42,7 +42,7 @@ export const MenuItemDetailModal: React.FC<MenuItemDetailModalProps> = ({
   isOpen,
   onClose,
   onAddToCart,
-  cafeName = "The Roasted Bean",
+  cafeName = "Café",
   isFavorite = false,
   onToggleFavorite,
   digitalMenuTheme,

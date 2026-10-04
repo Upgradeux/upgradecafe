@@ -90,39 +90,9 @@ export interface HomeSectionConfig {
 
 export const DEFAULT_HOME_SECTIONS: HomeSectionConfig[] = [
   { id: "categories", type: "CATEGORIES", title: "Categories", enabled: true, sortOrder: 1 },
-  {
-    id: "featured",
-    type: "FEATURED",
-    title: "Weekend Special",
-    subtitle: "Handcrafted Roaster Pick",
-    enabled: true,
-    sortOrder: 2,
-    template: "EDITORIAL_IMAGE_RIGHT",
-    config: {
-      badgeText: "Weekend Special",
-      actionText: "Try it today",
-      imageSource: "ITEM_IMAGE",
-    },
-  },
-  { id: "popular", type: "POPULAR", title: "Popular Food", subtitle: "Top customer favorites", enabled: true, sortOrder: 3 },
-  { id: "todays_picks", type: "TODAYS_PICKS", title: "Today's Picks", subtitle: "Curated by our baristas", enabled: true, sortOrder: 4 },
-  {
-    id: "offers",
-    type: "OFFERS",
-    title: "Offers & Perks",
-    subtitle: "Exclusive deals for you",
-    enabled: true,
-    sortOrder: 5,
-    template: "SPECIAL_CAROUSEL",
-    config: {
-      offerBadgeText: "Invite & Save 30%",
-      offerActionText: "Invite Now",
-      autoScroll: true,
-      autoScrollInterval: 4200,
-    },
-  },
-  { id: "rewards", type: "REWARDS", title: "Your Rewards", subtitle: "Earn Bean Points", enabled: true, sortOrder: 6 },
-  { id: "recently_ordered", type: "RECENTLY_ORDERED", title: "Order Again", subtitle: "Your past favorites", enabled: true, sortOrder: 7 },
+  { id: "popular", type: "POPULAR", title: "Popular items", enabled: true, sortOrder: 2 },
+  { id: "todays_picks", type: "TODAYS_PICKS", title: "Today's picks", enabled: true, sortOrder: 3 },
+  { id: "recently_ordered", type: "RECENTLY_ORDERED", title: "Recently ordered", enabled: true, sortOrder: 4 },
 ];
 
 export const cafeSettings = pgTable(

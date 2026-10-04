@@ -108,7 +108,7 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
 
   // Core Basics
   const [discountType, setDiscountType] = useState<DiscountType>("PERCENTAGE");
-  const [discountValue, setDiscountValue] = useState<string>("10");
+  const [discountValue, setDiscountValue] = useState<string>("");
   const [maxDiscountAmount, setMaxDiscountAmount] = useState<string>("");
   const [rewardItemId, setRewardItemId] = useState<string>("");
   const [applicationMethod, setApplicationMethod] = useState<OfferApplicationMethod>("COUPON_CODE");
@@ -151,7 +151,7 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
       setCode(initialData.code);
       setTitle(initialData.title);
       setDescription(initialData.description || "");
-      setDiscountValue(String(initialData.discountValue || 10));
+      setDiscountValue(String(initialData.discountValue ?? ""));
       setMaxDiscountAmount(initialData.maxDiscountAmount ? String(initialData.maxDiscountAmount) : "");
       setMinOrderAmount(String(initialData.minOrderAmount || 0));
       setRewardItemId(initialData.rewardItemId || "");
@@ -224,17 +224,13 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
         ? ["FREE", "TREAT", "GIFT"]
         : discountType === "FLAT"
         ? ["FLAT", "SAVE", "DEAL"]
-        : ["BREW", "ROAST", "SAVE", "WELCOME"];
+        : ["BREW", "ROAST", "SAVE", "DEAL"];
 
     const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
     let val = "";
-    if (discountType === "PERCENTAGE") {
-      val = discountValue ? String(discountValue) : "20";
-    } else if (discountType === "FLAT") {
-      val = discountValue ? String(discountValue) : "50";
-    } else {
-      val = Math.floor(10 + Math.random() * 90).toString();
-    }
+    val = discountType === "FREE_ITEM" || !discountValue
+      ? Math.floor(100 + Math.random() * 900).toString()
+      : String(discountValue);
     setCode(`${prefix}${val}`);
   };
 
@@ -332,7 +328,7 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
     }
 
     if (applicationMethod === "COUPON_CODE" && !finalCode) {
-      setError("Please provide a promo code (e.g. WELCOME10)");
+      setError("Please provide an offer code.");
       return;
     }
     if (!cleanTitle) {
@@ -845,7 +841,7 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
                 <IconTag className="w-3.5 h-3.5 text-[var(--color-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <Input
                   type="text"
-                  placeholder="e.g. WELCOME10"
+                  placeholder="Enter an offer code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
                   className="pl-8 text-xs font-mono uppercase tracking-wider h-9"

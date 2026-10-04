@@ -194,7 +194,7 @@ export function StampCardDescription({
  * coffee bean sketches, and custom illustrated SVG wax seal badges.
  */
 export function StampCard({
-  cafeName = "The Roasted Bean",
+  cafeName = "Café",
   collected,
   total,
   stamps: customStamps,
@@ -209,14 +209,14 @@ export function StampCard({
       ? collected
       : stampsCollected !== undefined
       ? stampsCollected
-      : 6;
+      : 0;
 
   const effectiveTotal =
     total !== undefined
       ? total
       : stampsRequired !== undefined
       ? stampsRequired
-      : 7;
+      : 0;
 
   // Build stamp items configuration dynamically
   const stamps: StampItemConfig[] = useMemo(() => {

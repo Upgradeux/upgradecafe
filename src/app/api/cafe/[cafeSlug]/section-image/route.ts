@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveCafeTenant } from "@/lib/auth/tenant-context";
 import { AppError } from "@/lib/errors/app-error";
-import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
+import { storageService } from "@/lib/storage/storage.service";
 
 export async function POST(
   request: NextRequest,
@@ -12,6 +10,7 @@ export async function POST(
   try {
     const { cafeSlug } = await params;
     const { cafe } = await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
+    storageService.assertConfigured();
 
     const formData = await request.formData();
     const file = formData.get("image") as File | null;
@@ -48,16 +47,6 @@ export async function POST(
       });
     }
 
-    const uploadDir = path.join(
-      process.cwd(),
-      "public",
-      "uploads",
-      "cafes",
-      cafe.slug,
-      "sections"
-    );
-    await fs.mkdir(uploadDir, { recursive: true });
-
     const extension =
       file.type === "image/png"
         ? "png"
@@ -67,13 +56,12 @@ export async function POST(
         ? "avif"
         : "jpg";
 
-    const fileName = `section-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
-    const filePath = path.join(uploadDir, fileName);
-
-    const bytes = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(bytes));
-
-    const publicUrl = `/uploads/cafes/${cafe.slug}/sections/${fileName}`;
+    const key = storageService.generateKey(cafe.id, "cover", extension);
+    const { publicUrl } = await storageService.upload(
+      key,
+      new Uint8Array(await file.arrayBuffer()),
+      file.type
+    );
 
     return NextResponse.json({
       success: true,

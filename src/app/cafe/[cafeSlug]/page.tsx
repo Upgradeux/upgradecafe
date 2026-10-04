@@ -9,6 +9,9 @@ import { CafeOverviewChart } from "@/features/cafe/analytics/components/CafeOver
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import Link from "next/link";
+import { and, eq, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { orders } from "@/lib/db/schema/orders";
 import {
   IconArrowRight,
   IconToolsKitchen2,
@@ -26,15 +29,54 @@ export default async function CafeDashboardPage({ params }: CafeDashboardPagePro
   const { cafe } = await resolveCafeTenant(cafeSlug);
 
   // Load tenant data
-  const [categories, menuItems, tablesList] = await Promise.all([
+  const timezone = cafe.timezone || "Asia/Kolkata";
+  const localToday = sql`date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE ${timezone})`;
+  const dayStart = sql`(${localToday} AT TIME ZONE ${timezone})`;
+  const dayEnd = sql`((${localToday} + interval '1 day') AT TIME ZONE ${timezone})`;
+  const createdInstant = sql`${orders.createdAt} AT TIME ZONE 'UTC'`;
+  const localHour = sql<number>`extract(hour from (${createdInstant} AT TIME ZONE ${timezone}))::int`;
+
+  const [categories, menuItems, tablesList, hourlyRows] = await Promise.all([
     MenuService.listCategories(cafe.id),
     MenuService.listMenuItems(cafe.id),
     TablesService.listTables(cafe.id),
+    db
+      .select({
+        hour: localHour,
+        revenue: sql<number>`coalesce(sum(case when ${orders.paymentStatus} = 'PAID' and ${orders.status} <> 'CANCELLED' then ${orders.total} else 0 end), 0)::int`,
+        orders: sql<number>`count(*) filter (where ${orders.status} <> 'CANCELLED')::int`,
+        paidOrders: sql<number>`count(*) filter (where ${orders.paymentStatus} = 'PAID' and ${orders.status} <> 'CANCELLED')::int`,
+      })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.cafeId, cafe.id),
+          sql`${createdInstant} >= ${dayStart} and ${createdInstant} < ${dayEnd}`
+        )
+      )
+      .groupBy(sql.raw("1"))
+      .orderBy(sql.raw("1")),
   ]);
 
   const occupiedCount = tablesList.filter((t) => t.status === "OCCUPIED").length;
   const reservedCount = tablesList.filter((t) => t.status === "RESERVED").length;
   const availableCount = tablesList.filter((t) => t.status === "AVAILABLE").length;
+  const metricByHour = new Map(
+    hourlyRows.map((row) => [
+      Number(row.hour),
+      {
+        revenue: Number(row.revenue),
+        orders: Number(row.orders),
+        paidOrders: Number(row.paidOrders),
+      },
+    ])
+  );
+  const hourlyData = Array.from({ length: 24 }, (_, hour) => ({
+    hour: `${String(hour).padStart(2, "0")}:00`,
+    ...(metricByHour.get(hour) || { revenue: 0, orders: 0, paidOrders: 0 }),
+  }));
+  const todayRevenue = hourlyData.reduce((sum, point) => sum + point.revenue, 0);
+  const todayOrders = hourlyData.reduce((sum, point) => sum + point.orders, 0);
 
   return (
     <div className="space-y-4">
@@ -66,12 +108,12 @@ export default async function CafeDashboardPage({ params }: CafeDashboardPagePro
         totalCategories={categories.length}
         totalTables={tablesList.length}
         occupiedTables={occupiedCount}
-        todayEstimatedSales={5420}
-        todayOrderCount={21}
+        todayEstimatedSales={todayRevenue}
+        todayOrderCount={todayOrders}
       />
 
       {/* Live Recharts rush & sales activity */}
-      <CafeOverviewChart />
+      <CafeOverviewChart hourlyData={hourlyData} currency={cafe.currency || "INR"} />
 
       {/* Horizontal Full-Width Live Floor Summary */}
       <LiveFloorSummary

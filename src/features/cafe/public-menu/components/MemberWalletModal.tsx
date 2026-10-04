@@ -39,11 +39,11 @@ export const MemberWalletModal: React.FC<MemberWalletModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const points = customerProfile?.loyaltyPoints || 480;
-  const stampsCollected = customerProfile?.stampsCollected || 6;
-  const stampsRequired = customerProfile?.stampsRequired || 7;
+  const points = customerProfile?.loyaltyPoints ?? 0;
+  const stampsCollected = customerProfile?.stampsCollected ?? 0;
+  const stampsRequired = customerProfile?.stampsRequired ?? 0;
   const stampsRemaining = Math.max(0, stampsRequired - stampsCollected);
-  const memberTier = customerProfile?.memberTier || "GOLD";
+  const memberTier = customerProfile?.memberTier || "MEMBER";
   const approxRupees = (points / 10).toFixed(0);
 
   return (

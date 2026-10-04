@@ -166,15 +166,15 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
         newSec = {
           id,
           type: "FEATURED",
-          title: "Weekend Special",
-          subtitle: "Handcrafted Roaster Pick",
+          title: "Featured item",
+          subtitle: "",
           enabled: true,
           sortOrder: sections.length + 1,
           template: "EDITORIAL_IMAGE_RIGHT",
           config: {
             featuredItemId: menuItems[0]?.id || "",
-            badgeText: "Weekend Special",
-            actionText: "Try it today",
+            badgeText: "",
+            actionText: "View item",
             imageSource: "ITEM_IMAGE",
           },
         };
@@ -269,10 +269,10 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
           id: "slide_1",
           sourceType: "MENU_ITEM",
           itemId: editingSection?.config?.featuredItemId || menuItems[0]?.id || "",
-          badgeText: editingSection?.config?.badgeText || "Weekend Special",
+          badgeText: editingSection?.config?.badgeText || "",
           customTitle: editingSection?.config?.customTitle || "",
           customSubtitle: editingSection?.config?.customSubtitle || "",
-          actionText: editingSection?.config?.actionText || "Try it today",
+          actionText: editingSection?.config?.actionText || "View item",
           imageSource: editingSection?.config?.imageSource || "ITEM_IMAGE",
           customImageUrl: editingSection?.config?.customImageUrl || "",
         },
@@ -319,11 +319,10 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
     const newSlide: FeaturedSlideConfig = {
       id: `slide_${Date.now()}`,
       sourceType: "CUSTOM",
-      badgeText: "Weekend Special",
-      customTitle: "Chef's Signature Wrap",
-      customSubtitle: "Handcrafted Roaster Pick",
-      price: 310,
-      actionText: "Try it today",
+      badgeText: "",
+      customTitle: "",
+      customSubtitle: "",
+      actionText: "View item",
       imageSource: "CUSTOM_UPLOAD",
     };
     const updated = [...currentList, newSlide];
@@ -395,16 +394,16 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
           id: "slide_1",
           sourceType: offersList.length > 0 ? "SAVED_OFFER" : "CUSTOM",
           offerId: offersList[0]?.id || "",
-          badgeText: editingSection?.config?.offerBadgeText || "Special Perk",
+          badgeText: editingSection?.config?.offerBadgeText || "",
           customTitle:
             editingSection?.config?.offerCustomTitle ||
             offersList[0]?.title ||
-            "Bring your friends, get 30% off on your next order",
+            "",
           customSubtitle:
             editingSection?.config?.offerCustomSubtitle ||
             offersList[0]?.description ||
-            "Special limited-time reward for our guests.",
-          code: offersList[0]?.code || "FRIENDS30",
+            "",
+          code: offersList[0]?.code || "",
           actionText: editingSection?.config?.offerActionText || "Claim",
         },
       ];
@@ -449,12 +448,11 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
     const newSlide: OfferSlideConfig = {
       id: `slide_${Date.now()}`,
       sourceType: "CUSTOM",
-      badgeText: "Special Offer",
-      customTitle: "Bring your friends, get 30% off on your next order",
-      customSubtitle: "Share your referral code and enjoy discounts together.",
-      discountValue: "30%",
+      badgeText: "",
+      customTitle: "",
+      customSubtitle: "",
       voucherColor: defaultSlideColors[currentList.length % defaultSlideColors.length],
-      code: "FRIENDS30",
+      code: "",
       actionText: "Claim",
     };
     const updated = [...currentList, newSlide];
@@ -1211,7 +1209,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                                   </label>
                                   <input
                                     type="text"
-                                    placeholder="e.g. Peri-Peri Grilled Chicken Wrap"
+                                    placeholder="Enter a menu item name"
                                     value={featuredCurrentSlide.customTitle || ""}
                                     onChange={(e) =>
                                       handleUpdateFeaturedSlide(activeFeaturedSlideIndex, {
@@ -1228,7 +1226,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                                   </label>
                                   <input
                                     type="number"
-                                    placeholder="e.g. 310"
+                                    placeholder="Enter the item price"
                                     value={featuredCurrentSlide.price ?? ""}
                                     onChange={(e) =>
                                       handleUpdateFeaturedSlide(activeFeaturedSlideIndex, {
@@ -1246,7 +1244,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="e.g. Handcrafted Roaster Pick"
+                                  placeholder="Optional subtitle"
                                   value={featuredCurrentSlide.customSubtitle || ""}
                                   onChange={(e) =>
                                     handleUpdateFeaturedSlide(activeFeaturedSlideIndex, {
@@ -1315,7 +1313,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                               </label>
                               <input
                                 type="text"
-                                placeholder="e.g. WEEKEND SPECIAL"
+                                placeholder="Optional badge"
                                 value={featuredCurrentSlide.badgeText || ""}
                                 onChange={(e) =>
                                   handleUpdateFeaturedSlide(activeFeaturedSlideIndex, {
@@ -1332,7 +1330,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                               </label>
                               <input
                                 type="text"
-                                placeholder="e.g. Try it today"
+                                placeholder="Button label"
                                 value={featuredCurrentSlide.actionText || ""}
                                 onChange={(e) =>
                                   handleUpdateFeaturedSlide(activeFeaturedSlideIndex, {
@@ -1608,7 +1606,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                                   </label>
                                   <input
                                     type="text"
-                                    placeholder="e.g. Bring your friends, get 30% off"
+                                    placeholder="Describe this offer"
                                     value={offerCurrentSlide.customTitle || ""}
                                     onChange={(e) =>
                                       handleUpdateOfferSlide(activeOfferSlideIndex, {
@@ -1625,7 +1623,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                                   </label>
                                   <input
                                     type="text"
-                                    placeholder="e.g. FRIENDS30"
+                                    placeholder="Offer code"
                                     value={offerCurrentSlide.code || ""}
                                     onChange={(e) =>
                                       handleUpdateOfferSlide(activeOfferSlideIndex, {
@@ -1643,7 +1641,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="e.g. Share code with friends & enjoy discounts together"
+                                  placeholder="Optional offer details"
                                   value={offerCurrentSlide.customSubtitle || ""}
                                   onChange={(e) =>
                                     handleUpdateOfferSlide(activeOfferSlideIndex, {
@@ -1660,7 +1658,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="e.g. 10%, 30%, FLAT ₹50 (defaults to discount in title)"
+                                  placeholder="Discount or benefit"
                                   value={offerCurrentSlide.discountValue || ""}
                                   onChange={(e) =>
                                     handleUpdateOfferSlide(activeOfferSlideIndex, {
@@ -1724,7 +1722,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                               </label>
                               <input
                                 type="text"
-                                placeholder="e.g. Special Offer"
+                                placeholder="Optional badge"
                                 value={offerCurrentSlide.badgeText || ""}
                                 onChange={(e) =>
                                   handleUpdateOfferSlide(activeOfferSlideIndex, {
@@ -1741,7 +1739,7 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                               </label>
                               <input
                                 type="text"
-                                placeholder="e.g. Claim"
+                                placeholder="Button label"
                                 value={offerCurrentSlide.actionText || ""}
                                 onChange={(e) =>
                                   handleUpdateOfferSlide(activeOfferSlideIndex, {
@@ -1968,11 +1966,6 @@ export const DigitalMenuSectionBuilder: React.FC<DigitalMenuSectionBuilderProps>
                         )}
                       </div>
 
-                      {/* Mock Surrounding Menu Discovery */}
-                      <div className="pt-2 opacity-50 space-y-1.5 pointer-events-none select-none">
-                        <div className="h-3 w-20 bg-black/10 dark:bg-white/10 rounded" />
-                        <div className="h-16 w-full bg-black/5 dark:bg-white/5 rounded-xl" />
-                      </div>
                     </div>
                   </div>
                 </div>

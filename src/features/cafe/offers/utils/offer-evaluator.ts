@@ -250,7 +250,7 @@ export function evaluateOffer(
   const isReturning = Boolean(
     context.hasPastOrders ||
       isRegisteredLoyalty ||
-      (context.customerProfile && context.customerProfile.loyaltyPoints > 0)
+      (context.customerProfile && (context.customerProfile.loyaltyPoints ?? 0) > 0)
   );
 
   if (offer.customerEligibility === "LOYALTY") {

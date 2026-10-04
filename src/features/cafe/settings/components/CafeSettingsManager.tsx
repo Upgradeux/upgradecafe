@@ -1065,7 +1065,7 @@ export const CafeSettingsManager: React.FC<CafeSettingsManagerProps> = ({
                     Enable Offers & Promo Codes
                   </div>
                   <p className="text-[11px] text-[var(--color-muted)]">
-                    Enable promotional codes (e.g. WELCOME10) in the checkout cart and bottom navigation offers drawer.
+                    Enable active promotional codes in the checkout cart and bottom navigation offers drawer.
                   </p>
                 </div>
                 <input
@@ -1160,7 +1160,7 @@ export const CafeSettingsManager: React.FC<CafeSettingsManagerProps> = ({
                     type="text"
                     value={upiMerchantName}
                     onChange={(e) => setUpiMerchantName(e.target.value)}
-                    placeholder="e.g. The Roasted Bean Café"
+                    placeholder="Enter your café name"
                     className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-xs text-[var(--color-foreground)] placeholder-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                   <p className="text-[11px] text-[var(--color-muted)]">

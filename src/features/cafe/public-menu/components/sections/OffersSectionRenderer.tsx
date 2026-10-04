@@ -298,8 +298,7 @@ export const OffersSectionRenderer: React.FC<OffersSectionRendererProps> = ({
     if (flatMatch) {
       return { value: `${flatMatch[1]}${flatMatch[2]}`, label: "OFF" };
     }
-    const fallbackValues = ["30%", "20%", "50%"];
-    return { value: fallbackValues[idx % fallbackValues.length], label: "DISCOUNT" };
+    return null;
   };
 
   if (displayList.length === 0) {
@@ -467,7 +466,7 @@ export const OffersSectionRenderer: React.FC<OffersSectionRendererProps> = ({
                           <span className="w-1 h-1 rounded-full bg-[#FFFDF6]" />
                         </span>
                         <span className={`text-[11.5px] sm:text-xs font-black tracking-tight truncate max-w-[130px] sm:max-w-[150px] ${isApplied ? "text-stone-700" : "text-[#1C1D1A]"}`}>
-                          {cafeName || "The Roasted Bean"}
+                        {cafeName || "Café"}
                         </span>
                       </div>
                       {isApplied ? (
@@ -519,9 +518,9 @@ export const OffersSectionRenderer: React.FC<OffersSectionRendererProps> = ({
                     {/* Center Discount Value */}
                     <div className="my-auto space-y-0.5 py-1">
                       <div className={`text-2xl sm:text-[28px] font-black leading-none tracking-tight font-heading ${isApplied ? "text-stone-700" : "text-[#1C1D1A]"}`}>
-                        {discountInfo.value}
+                        {discountInfo?.value || item.code || "Offer"}
                       </div>
-                      {discountInfo.label && (
+                      {discountInfo?.label && (
                         <div className={`text-[9.5px] sm:text-[10.5px] font-black tracking-wider uppercase ${isApplied ? "text-stone-600 opacity-80" : "text-[#1C1D1A] opacity-90"}`}>
                           {discountInfo.label}
                         </div>

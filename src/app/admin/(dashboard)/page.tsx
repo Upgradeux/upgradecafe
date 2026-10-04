@@ -169,19 +169,19 @@ export default function AdminDashboardPage() {
                   <div key={log.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-2.5">
                       <Badge variant="neutral" size="sm" className="shrink-0">
-                        {log.action.replace("ADMIN_", "")}
+                        {log.action ? log.action.replace("ADMIN_", "") : "ACTION"}
                       </Badge>
                       <p className="truncate text-xs text-[var(--color-foreground)]">
-                        <span className="font-medium">{log.actorName}</span> on {log.entityType.toLowerCase()}{log.cafeName ? ` · ${log.cafeName}` : ""}
+                        <span className="font-medium">{log.actorName || "Admin"}</span> on {log.entityType ? log.entityType.toLowerCase() : "system"}{log.cafeName ? ` · ${log.cafeName}` : ""}
                       </p>
                     </div>
                     <time className="shrink-0 text-[11px] tabular-nums text-[var(--color-muted)] sm:text-right">
-                      {new Date(log.createdAt).toLocaleDateString("en-IN", {
+                      {log.createdAt ? new Date(log.createdAt).toLocaleDateString("en-IN", {
                         month: "short",
                         day: "numeric",
                         hour: "2-digit",
                         minute: "2-digit",
-                      })}
+                      }) : ""}
                     </time>
                   </div>
                 ))

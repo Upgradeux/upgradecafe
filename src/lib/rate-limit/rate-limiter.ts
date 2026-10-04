@@ -17,6 +17,7 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
   CAFE_CREATION: { requests: 20, window: "1 h" },
   ADMIN_MUTATION: { requests: 60, window: "1 m" },
   PUBLIC_API: { requests: 100, window: "1 m" },
+  CUSTOMER_OTP: { requests: 4, window: "10 m" },
 };
 
 // In-memory fallback tracking for local development when Upstash is unconfigured

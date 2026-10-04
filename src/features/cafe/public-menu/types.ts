@@ -5,13 +5,13 @@ import { OrderWithItems } from "@/features/cafe/orders/types";
 export interface CustomerProfile {
   id: string;
   name: string;
-  phone: string;
+  phone?: string;
   email?: string;
   avatarUrl?: string;
   dateOfBirth?: string;
-  loyaltyPoints: number;
+  loyaltyPoints?: number;
   isGuest: boolean;
-  memberTier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+  memberTier?: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
   // Collectibles: Stamps, Badges & Stickers
   stampsCollected?: number;
   stampsRequired?: number;

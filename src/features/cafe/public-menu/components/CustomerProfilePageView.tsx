@@ -350,9 +350,6 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
       const savedProfile = localStorage.getItem(`cafe_customer_profile_${cafe.slug}`);
       if (savedProfile) {
         const parsed: CustomerProfile = JSON.parse(savedProfile);
-        if (parsed.stampsCollected === undefined) parsed.stampsCollected = 6;
-        if (parsed.stampsRequired === undefined) parsed.stampsRequired = 7;
-        if (!parsed.dateOfBirth) parsed.dateOfBirth = "14 March 2002";
         setProfile(parsed);
       }
 
@@ -415,21 +412,10 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
   const favoritedMenuItems = menuItems.filter((m) => favorites.includes(m.id));
 
   // Current calculations
-  const currentPoints = profile?.loyaltyPoints || 480;
-  const stampsCollected = profile?.stampsCollected ?? 6;
-  const stampsRequired = profile?.stampsRequired ?? 7;
+  const currentPoints = profile?.loyaltyPoints ?? 0;
+  const stampsCollected = profile?.stampsCollected ?? 0;
+  const stampsRequired = profile?.stampsRequired ?? 0;
 
-  // Sample orders matching Reference Image 3 receipts
-  const sampleReceipts = [
-    { id: "rec_1062", orderNumber: "1062", itemsCount: 1, total: 305 },
-    { id: "rec_1061", orderNumber: "1061", itemsCount: 1, total: 205 },
-    { id: "rec_1060", orderNumber: "1060", itemsCount: 1, total: 205 },
-    { id: "rec_1059", orderNumber: "1059", itemsCount: 1, total: 221 },
-    { id: "rec_1058", orderNumber: "1058", itemsCount: 1, total: 205 },
-    { id: "rec_1057", orderNumber: "1057", itemsCount: 1, total: 252 },
-    { id: "rec_1056", orderNumber: "1056", itemsCount: 1, total: 205 },
-    { id: "rec_1055", orderNumber: "1055", itemsCount: 1, total: 252 },
-  ];
 
   const handleReorder = (orderNum: string) => {
     setShowOrdersSheet(false);
@@ -523,7 +509,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
             setEditAvatar(profile.avatarUrl || "");
             setEditPhone(profile.phone || "");
             setEditEmail(profile.email || "");
-            setEditDob(profile.dateOfBirth || "14 March 2002");
+            setEditDob(profile.dateOfBirth || "");
             setShowEditModal(true);
           }}
           className="relative -mt-11 sm:-mt-12 w-20 h-20 sm:w-22 sm:h-22 rounded-full overflow-hidden shadow-md ring-4 ring-[#FAF9F6] cursor-pointer active:scale-95 transition-transform bg-[#F5EBE1] flex items-center justify-center flex-shrink-0"
@@ -558,7 +544,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
               setEditAvatar(profile.avatarUrl || "");
               setEditPhone(profile.phone || "");
               setEditEmail(profile.email || "");
-              setEditDob(profile.dateOfBirth || "14 March 2002");
+              setEditDob(profile.dateOfBirth || "");
               setShowEditModal(true);
             }}
             className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-200/80 hover:bg-stone-300/80 text-stone-800 text-xs font-semibold shadow-2xs transition-all active:scale-95 cursor-pointer"
@@ -630,7 +616,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
               setEditAvatar(profile.avatarUrl || "");
               setEditPhone(profile.phone || "");
               setEditEmail(profile.email || "");
-              setEditDob(profile.dateOfBirth || "14 March 2002");
+              setEditDob(profile.dateOfBirth || "");
               setShowEditModal(true);
             }}
             className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-stone-50 active:bg-stone-100 transition-colors cursor-pointer"
@@ -816,7 +802,11 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
         themeOpaqueColors={themeOpaqueColors}
         visualTheme={visualTheme}
       >
-        {(pastOrders.length > 0 ? pastOrders : sampleReceipts).map((ord: any) => (
+        {pastOrders.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-stone-200 p-6 text-center text-sm text-stone-500">
+            No past orders to show yet.
+          </div>
+        ) : pastOrders.map((ord) => (
           <div
             key={ord.id}
             className="p-3.5 rounded-2xl bg-white border border-stone-200/70 shadow-xs flex items-center justify-between gap-3"
@@ -892,7 +882,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] font-bold tracking-wide uppercase">
               <IconCrown className="w-3 h-3 text-amber-300" />
-              <span>{profile.memberTier || "GOLD"} PASS</span>
+              <span>{profile.memberTier || "MEMBER"} PASS</span>
             </div>
             <span className="text-[10px] font-mono tracking-widest text-white/70">
               {cafe.slug.toUpperCase()}

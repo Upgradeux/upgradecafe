@@ -127,21 +127,30 @@ export function getRegisteredAccounts(): Record<string, CustomerProfile> {
  * Lookup an existing customer profile by phone or email.
  */
 export function findRegisteredProfile(identifier: string): CustomerProfile | null {
+  if (!identifier) return null;
   const accounts = getRegisteredAccounts();
-  const normalized = normalizePhone(identifier).toLowerCase();
+  const trimmed = identifier.trim().toLowerCase();
+  const isEmail = trimmed.includes("@");
+  const normalizedPhone = !isEmail ? normalizePhone(identifier).toLowerCase() : "";
 
-  // Check direct key match (e.g. +919876543210 or user@example.com)
-  if (accounts[normalized]) {
-    return accounts[normalized];
+  // Check direct key match
+  if (isEmail && accounts[trimmed]) {
+    return accounts[trimmed];
+  }
+  if (!isEmail && accounts[normalizedPhone]) {
+    return accounts[normalizedPhone];
   }
 
   // Check across all accounts by phone or email field
   for (const acc of Object.values(accounts)) {
-    if (
-      normalizePhone(acc.phone || "").toLowerCase() === normalized ||
-      (acc.email && acc.email.toLowerCase() === normalized)
-    ) {
-      return acc;
+    if (isEmail) {
+      if (acc.email && acc.email.trim().toLowerCase() === trimmed) {
+        return acc;
+      }
+    } else {
+      if (acc.phone && normalizePhone(acc.phone).toLowerCase() === normalizedPhone) {
+        return acc;
+      }
     }
   }
 
@@ -150,17 +159,29 @@ export function findRegisteredProfile(identifier: string): CustomerProfile | nul
 
 /**
  * Save or update a customer profile in the master account registry.
- * This guarantees user info is preserved even after logout!
+ * Indexes by phone, email, and ID so any login method restores the same profile!
  */
 export function saveToAccountsRegistry(profile: CustomerProfile): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !profile) return;
   try {
     const accounts = getRegisteredAccounts();
-    const primaryKey = profile.phone ? normalizePhone(profile.phone) : (profile.email || profile.id);
-    accounts[primaryKey] = {
+    const updated = {
       ...profile,
       isGuest: false,
     };
+
+    if (profile.phone) {
+      const phoneKey = normalizePhone(profile.phone).toLowerCase();
+      accounts[phoneKey] = updated;
+    }
+    if (profile.email) {
+      const emailKey = profile.email.trim().toLowerCase();
+      accounts[emailKey] = updated;
+    }
+    if (profile.id) {
+      accounts[profile.id] = updated;
+    }
+
     localStorage.setItem(ACCOUNTS_REGISTRY_KEY, JSON.stringify(accounts));
   } catch {}
 }

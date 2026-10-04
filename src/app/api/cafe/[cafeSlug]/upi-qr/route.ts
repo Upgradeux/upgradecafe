@@ -4,9 +4,7 @@ import { db } from "@/lib/db";
 import { cafeSettings } from "@/lib/db/schema/cafe-settings";
 import { eq } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
-import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
+import { storageService } from "@/lib/storage/storage.service";
 
 export async function POST(
   request: NextRequest,
@@ -15,6 +13,7 @@ export async function POST(
   try {
     const { cafeSlug } = await params;
     const { cafe } = await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
+    storageService.assertConfigured();
 
     const formData = await request.formData();
     const file = formData.get("upiQr") as File | null;
@@ -52,16 +51,6 @@ export async function POST(
       });
     }
 
-    const uploadDir = path.join(
-      process.cwd(),
-      "public",
-      "uploads",
-      "cafes",
-      cafe.slug,
-      "upi"
-    );
-    await fs.mkdir(uploadDir, { recursive: true });
-
     const extension =
       file.type === "image/svg+xml"
         ? "svg"
@@ -73,13 +62,12 @@ export async function POST(
         ? "avif"
         : "jpg";
 
-    const fileName = `upi-qr-${Date.now()}-${crypto.randomUUID().slice(0, 6)}.${extension}`;
-    const filePath = path.join(uploadDir, fileName);
-
-    const bytes = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(bytes));
-
-    const publicUrl = `/uploads/cafes/${cafe.slug}/upi/${fileName}`;
+    const key = storageService.generateKey(cafe.id, "files", extension);
+    const { publicUrl } = await storageService.upload(
+      key,
+      new Uint8Array(await file.arrayBuffer()),
+      file.type
+    );
 
     // Upsert into cafeSettings
     const [existing] = await db
@@ -93,7 +81,7 @@ export async function POST(
         .update(cafeSettings)
         .set({
           upiQrUrl: publicUrl,
-          upiQrKey: fileName,
+          upiQrKey: key,
           updatedAt: new Date(),
         })
         .where(eq(cafeSettings.cafeId, cafe.id));
@@ -101,7 +89,7 @@ export async function POST(
       await db.insert(cafeSettings).values({
         cafeId: cafe.id,
         upiQrUrl: publicUrl,
-        upiQrKey: fileName,
+        upiQrKey: key,
       });
     }
 
@@ -110,7 +98,7 @@ export async function POST(
       message: "UPI QR code uploaded successfully.",
       data: {
         upiQrUrl: publicUrl,
-        upiQrKey: fileName,
+        upiQrKey: key,
       },
     });
   } catch (err) {

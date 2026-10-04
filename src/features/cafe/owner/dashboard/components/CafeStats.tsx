@@ -25,8 +25,8 @@ export const CafeStats: React.FC<CafeStatsProps> = ({
   totalCategories,
   totalTables,
   occupiedTables,
-  todayEstimatedSales = 4850,
-  todayOrderCount = 18,
+  todayEstimatedSales = 0,
+  todayOrderCount = 0,
 }) => {
   const availableTables = Math.max(0, totalTables - occupiedTables);
 

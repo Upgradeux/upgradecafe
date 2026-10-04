@@ -101,7 +101,7 @@ export const ClassicListLayout: React.FC<MenuLayoutProps> = ({
               className="px-2.5 py-1.5 rounded-md bg-[var(--color-background)] border border-[var(--color-border)] text-xs font-medium shadow-xs"
             >
               <IconAward className="w-3.5 h-3.5 text-amber-500 inline mr-1" />
-              <span>{customerProfile && !customerProfile.isGuest ? `${customerProfile.loyaltyPoints} Pts` : "VIP"}</span>
+              <span>{customerProfile && !customerProfile.isGuest ? `${customerProfile.loyaltyPoints ?? 0} Pts` : "Sign in"}</span>
             </button>
             <button
               type="button"

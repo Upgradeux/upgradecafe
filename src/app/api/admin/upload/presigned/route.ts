@@ -6,6 +6,7 @@ import { formatErrorResponse } from "@/lib/errors/app-error";
 export async function POST(req: NextRequest) {
   try {
     await requireSuperAdmin();
+    storageService.assertConfigured();
 
     const body = await req.json();
     const { cafeId, category, contentType, extension } = body;

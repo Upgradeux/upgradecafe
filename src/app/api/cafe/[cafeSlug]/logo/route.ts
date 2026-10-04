@@ -4,9 +4,7 @@ import { db } from "@/lib/db";
 import { cafes } from "@/lib/db/schema/cafes";
 import { eq } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
-import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
+import { storageService } from "@/lib/storage/storage.service";
 
 export async function POST(
   request: NextRequest,
@@ -15,6 +13,7 @@ export async function POST(
   try {
     const { cafeSlug } = await params;
     const { cafe } = await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
+    storageService.assertConfigured();
 
     const formData = await request.formData();
     const file = formData.get("logo") as File | null;
@@ -52,9 +51,6 @@ export async function POST(
       });
     }
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "cafes", cafe.slug, "branding");
-    await fs.mkdir(uploadDir, { recursive: true });
-
     const extension =
       file.type === "image/svg+xml"
         ? "svg"
@@ -66,13 +62,12 @@ export async function POST(
         ? "avif"
         : "jpg";
 
-    const fileName = `logo-${Date.now()}-${crypto.randomUUID().slice(0, 6)}.${extension}`;
-    const filePath = path.join(uploadDir, fileName);
-
-    const bytes = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(bytes));
-
-    const publicUrl = `/uploads/cafes/${cafe.slug}/branding/${fileName}`;
+    const key = storageService.generateKey(cafe.id, "logo", extension);
+    const { publicUrl } = await storageService.upload(
+      key,
+      new Uint8Array(await file.arrayBuffer()),
+      file.type
+    );
 
     // Update authoritative cafe record in database (shared with Super Admin & Public Menu)
     await db
@@ -102,6 +97,7 @@ export async function DELETE(
     const { cafeSlug } = await params;
     const { cafe } = await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
 
+    const oldLogo = cafe.logoKey;
     await db
       .update(cafes)
       .set({
@@ -109,6 +105,13 @@ export async function DELETE(
         updatedAt: new Date(),
       })
       .where(eq(cafes.id, cafe.id));
+
+    if (oldLogo?.startsWith(`${process.env.R2_PUBLIC_URL?.replace(/\/$/, "")}/`)) {
+      const key = oldLogo.slice(process.env.R2_PUBLIC_URL!.replace(/\/$/, "").length + 1);
+      await storageService.delete(decodeURIComponent(key)).catch((error) => {
+        console.error("Failed to remove old café logo from R2:", error);
+      });
+    }
 
     return NextResponse.json({
       success: true,

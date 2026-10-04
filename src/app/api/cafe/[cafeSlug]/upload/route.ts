@@ -7,9 +7,7 @@ import {
   MAX_IMAGES_PER_ITEM,
   formatFileSize,
 } from "@/features/cafe/menu/utils/image-helpers";
-import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
+import { storageService } from "@/lib/storage/storage.service";
 
 export async function POST(
   request: NextRequest,
@@ -18,6 +16,7 @@ export async function POST(
   try {
     const { cafeSlug } = await params;
     const { cafe } = await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
+    storageService.assertConfigured();
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
@@ -70,31 +69,16 @@ export async function POST(
       });
     }
 
-    // Prepare target directory in public/uploads/cafes/[slug]/menu/
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "cafes", cafe.slug, "menu");
-    await fs.mkdir(uploadDir, { recursive: true });
-
     const uploadedUrls: Array<{ url: string; name: string; size: number }> = [];
 
     for (const file of files) {
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-
-      // Determine clean extension
-      const extension = file.type === "image/png"
-        ? "png"
-        : file.type === "image/webp"
-        ? "webp"
-        : file.type === "image/avif"
-        ? "avif"
-        : "jpg";
-
-      const uniqueFileName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
-      const filePath = path.join(uploadDir, uniqueFileName);
-
-      await fs.writeFile(filePath, buffer);
-
-      const publicUrl = `/uploads/cafes/${cafe.slug}/menu/${uniqueFileName}`;
+      const extension = file.type === "image/jpeg" ? "jpg" : file.type.split("/")[1];
+      const key = storageService.generateKey(cafe.id, "menu", extension);
+      const { publicUrl } = await storageService.upload(
+        key,
+        new Uint8Array(await file.arrayBuffer()),
+        file.type
+      );
       uploadedUrls.push({
         url: publicUrl,
         name: file.name,

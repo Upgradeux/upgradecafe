@@ -1034,7 +1034,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                                       ? "★ Bean Club Stamps"
                                       : "Bean Club Stamps"
                                     : isLoggedIn
-                                    ? `★ ${customerProfile?.memberTier || "Gold"} Member`
+                                    ? `★ ${customerProfile?.memberTier || "Member"}`
                                     : "Bean Club Rewards"}
                                 </span>
                               </div>
@@ -1042,12 +1042,12 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                               <div className="text-base sm:text-lg font-bold text-[#1C1D1A] tracking-tight">
                                 {isStampsMode
                                   ? isLoggedIn
-                                    ? `${customerProfile?.stampsCollected || 6} / ${
-                                        customerProfile?.stampsRequired || 8
+                                    ? `${customerProfile?.stampsCollected ?? 0} / ${
+                                        customerProfile?.stampsRequired ?? 0
                                       } Stamps Collected`
                                     : "Collect stamps with every sip"
                                   : isLoggedIn
-                                  ? `${customerProfile?.loyaltyPoints || 480} Points Available`
+                                  ? `${customerProfile?.loyaltyPoints ?? 0} Points Available`
                                   : "Earn points with every sip"}
                               </div>
 
@@ -1380,7 +1380,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                                         ? "★ Bean Club Stamps"
                                         : "Bean Club Stamps"
                                       : isLoggedIn
-                                      ? `★ ${customerProfile?.memberTier || "Gold"} Member`
+                                      ? `★ ${customerProfile?.memberTier || "Member"}`
                                       : "Bean Club Rewards"}
                                   </span>
                                 </div>
@@ -1388,12 +1388,12 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                                 <div className="text-base sm:text-lg font-bold text-[#1C1D1A] tracking-tight">
                                   {isStampsMode
                                     ? isLoggedIn
-                                      ? `${customerProfile?.stampsCollected || 6} / ${
-                                          customerProfile?.stampsRequired || 8
+                                      ? `${customerProfile?.stampsCollected ?? 0} / ${
+                                          customerProfile?.stampsRequired ?? 0
                                         } Stamps Collected`
                                       : "Collect stamps with every sip"
                                     : isLoggedIn
-                                    ? `${customerProfile?.loyaltyPoints || 480} Points Available`
+                                    ? `${customerProfile?.loyaltyPoints ?? 0} Points Available`
                                     : "Earn points with every sip"}
                                 </div>
 

@@ -4,7 +4,6 @@ import { phoneNumber } from "better-auth/plugins";
 import { dash } from "@better-auth/infra";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { sendMsg91Otp } from "@/lib/sms/msg91-service";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -33,10 +32,7 @@ export const auth = betterAuth({
   plugins: [
     phoneNumber({
       sendOTP: async ({ phoneNumber: phoneNum, code }) => {
-        await sendMsg91Otp({
-          phoneNumber: phoneNum,
-          code,
-        });
+        console.log(`[BetterAuth Phone OTP] Verification code for ${phoneNum}: ${code}`);
       },
       otpLength: 6,
       expiresIn: 300, // 5 minutes

@@ -379,25 +379,6 @@ export const CafeOffersManager: React.FC<CafeOffersManagerProps> = ({
     }
   };
 
-  // Quick Preset Adder for empty state or quick setup
-  const handleAddPreset = async (preset: {
-    code: string;
-    title: string;
-    description: string;
-    discountType: DiscountType;
-    discountValue: number;
-    minOrderAmount: number;
-    badgeText: string;
-  }) => {
-    await handleSaveOffer({
-      ...preset,
-      applicationMethod: "COUPON_CODE",
-      appliesTo: "ALL",
-      customerEligibility: "ALL",
-      isActive: true,
-    });
-  };
-
   // Save Loyalty Program Settings
   const handleSaveLoyaltySettings = async () => {
     setIsSavingLoyalty(true);
@@ -917,92 +898,6 @@ export const CafeOffersManager: React.FC<CafeOffersManagerProps> = ({
                 </p>
               </div>
 
-              {!searchQuery && (
-                <div className="space-y-3 pt-2">
-                  <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider block">
-                    Or Quick Add a Standard Café Offer Preset:
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleAddPreset({
-                          code: "WELCOME10",
-                          title: "10% First Order Welcome",
-                          description: "Save 10% on your very first order with us",
-                          discountType: "PERCENTAGE",
-                          discountValue: 10,
-                          minOrderAmount: 0,
-                          badgeText: "Welcome Gift",
-                        })
-                      }
-                      className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] hover:border-[var(--color-primary)] transition-all cursor-pointer group"
-                    >
-                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-[var(--color-primary-light)] text-[var(--color-primary)]">
-                        WELCOME10
-                      </span>
-                      <h4 className="text-xs font-bold text-[var(--color-foreground)] mt-2">
-                        10% Welcome Perk
-                      </h4>
-                      <p className="text-[10px] text-[var(--color-muted)] mt-0.5">
-                        No minimum order requirement.
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleAddPreset({
-                          code: "FLAT50",
-                          title: "₹50 Flat Discount",
-                          description: "Unlocked on orders above ₹250",
-                          discountType: "FLAT",
-                          discountValue: 50,
-                          minOrderAmount: 250,
-                          badgeText: "Cart Unlock",
-                        })
-                      }
-                      className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] hover:border-[var(--color-primary)] transition-all cursor-pointer group"
-                    >
-                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                        FLAT50
-                      </span>
-                      <h4 className="text-xs font-bold text-[var(--color-foreground)] mt-2">
-                        ₹50 Flat Savings
-                      </h4>
-                      <p className="text-[10px] text-[var(--color-muted)] mt-0.5">
-                        Triggers cart unlock at ₹250+.
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleAddPreset({
-                          code: "CHEF20",
-                          title: "20% Chef Special",
-                          description: "Exclusive chef discount on orders above ₹300",
-                          discountType: "PERCENTAGE",
-                          discountValue: 20,
-                          minOrderAmount: 300,
-                          badgeText: "Chef Pick",
-                        })
-                      }
-                      className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] hover:border-[var(--color-primary)] transition-all cursor-pointer group"
-                    >
-                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                        CHEF20
-                      </span>
-                      <h4 className="text-xs font-bold text-[var(--color-foreground)] mt-2">
-                        20% Chef Special
-                      </h4>
-                      <p className="text-[10px] text-[var(--color-muted)] mt-0.5">
-                        Applies to orders above ₹300.
-                      </p>
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1084,32 +979,8 @@ export const CafeOffersManager: React.FC<CafeOffersManagerProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-[var(--color-muted)] mt-1 leading-relaxed">
-                  Best for coffee shops, bakeries & quick-serve cafés. Guests collect a stamp on every order. Completing 8 stamps unlocks a free coffee or treat.
+                  Choose a stamp-based reward style for your cafe. Customer balances should reflect recorded loyalty activity.
                 </p>
-              </div>
-
-              {/* Mini Stamp Mockup Preview */}
-              <div className="p-3 rounded-xl bg-[var(--color-background)] border border-[var(--color-border)] space-y-2">
-                <div className="flex items-center justify-between text-[10px] font-semibold text-[var(--color-muted)]">
-                  <span>8 Stamps to Free Coffee</span>
-                  <span className="text-[var(--color-primary)]">3 / 8 Collected</span>
-                </div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                    <div
-                      key={i}
-                      className={`h-7 rounded-lg border flex items-center justify-center text-[10px] font-bold ${
-                        i <= 3
-                          ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
-                          : i === 8
-                          ? "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-dashed border-amber-500"
-                          : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)]"
-                      }`}
-                    >
-                      {i <= 3 ? "☕" : i === 8 ? "🎁" : i}
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
 
@@ -1142,23 +1013,8 @@ export const CafeOffersManager: React.FC<CafeOffersManagerProps> = ({
                   Bean Points Program
                 </h4>
                 <p className="text-xs text-[var(--color-muted)] mt-1 leading-relaxed">
-                  Best for specialty roasters & dining cafés. Guests earn points proportional to their total order amount (e.g. 10 points per ₹100 spent) redeemable for tiered rewards.
+                  Choose a points-based reward style for your cafe. Customer balances should reflect recorded loyalty activity.
                 </p>
-              </div>
-
-              {/* Mini Points Mockup Preview */}
-              <div className="p-3 rounded-xl bg-[var(--color-background)] border border-[var(--color-border)] space-y-2">
-                <div className="flex items-center justify-between text-[10px] font-semibold text-[var(--color-muted)]">
-                  <span>Bean Loyalty Balance</span>
-                  <span className="text-purple-600 font-extrabold">480 Pts</span>
-                </div>
-                <div className="w-full bg-[var(--color-border)] h-2 rounded-full overflow-hidden">
-                  <div className="bg-purple-600 h-full w-[65%] rounded-full"></div>
-                </div>
-                <div className="flex items-center justify-between text-[9px] text-[var(--color-muted)]">
-                  <span>Tier 1: 300 pts (Unlocked)</span>
-                  <span>Next: 600 pts</span>
-                </div>
               </div>
             </div>
           </div>
