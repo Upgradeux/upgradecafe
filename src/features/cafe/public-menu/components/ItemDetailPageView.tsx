@@ -545,7 +545,7 @@ export const ItemDetailPageView: React.FC<ItemDetailPageViewProps> = ({
 
     toast({
       title: "Added to Cart",
-      description: `${quantity}x ${item.name} added to your order.`,
+      description: `${quantity}x ${item.name} added to your cart.`,
       variant: "success",
     });
 

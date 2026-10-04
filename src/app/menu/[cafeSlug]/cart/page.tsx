@@ -9,6 +9,8 @@ import { menuItems } from "@/lib/db/schema/menu-items";
 import { categories } from "@/lib/db/schema/categories";
 import { eq, and, asc } from "drizzle-orm";
 import { getCafeThemeStyles } from "@/lib/theme/theme-tokens";
+import { cookies } from "next/headers";
+import { GuestSessionService } from "@/features/cafe/orders/services/guest-session.service";
 import { CustomerCartPageView } from "@/features/cafe/public-menu/components/CustomerCartPageView";
 import { ToastProvider } from "@/components/ui/Toast";
 
@@ -174,6 +176,26 @@ export default async function CustomerCartPage({
     if (matched) {
       resolvedTable = matched;
       isFromQrScan = true;
+    }
+  }
+
+  // Active dining session restoration via HTTP-only cookie
+  if (!resolvedTable) {
+    try {
+      const cookieStore = await cookies();
+      const guestCookie = cookieStore.get(`cf_guest_session_${cafeSlug}`)?.value;
+      if (guestCookie) {
+        const session = await GuestSessionService.getActiveDiningSession({
+          cafeId: cafe.id,
+          rawToken: guestCookie,
+        });
+        if (session && session.table) {
+          resolvedTable = session.table;
+          isFromQrScan = true;
+        }
+      }
+    } catch (sessionErr) {
+      console.warn("Failed checking active dining session cookie in cart:", sessionErr);
     }
   }
 

@@ -62,6 +62,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
   popularItems: passedPopularItems,
   salesStats30d = {},
   activeTableName,
+  table,
   customerProfile,
   activeOrders = [],
   activeOrderId,
@@ -101,7 +102,16 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
   onOpenCallStaff,
 }) => {
   const router = useRouter();
-  const tableQuery = activeTableName ? `?table=${encodeURIComponent(activeTableName)}` : "";
+  const qrParam = table?.qrIdentifier || null;
+  const tableQuery = activeTableName
+    ? `?table=${encodeURIComponent(activeTableName)}${qrParam ? `&qr=${encodeURIComponent(qrParam)}` : ""}`
+    : "";
+
+  // Prefetch orders and cart for instantaneous perceived navigation
+  React.useEffect(() => {
+    router.prefetch(`/menu/${cafe.slug}/orders${tableQuery}`);
+    router.prefetch(`/menu/${cafe.slug}/cart${tableQuery}`);
+  }, [cafe.slug, tableQuery, router]);
 
   const [showFilters, setShowFilters] = useState(false);
   const [currentMainTab, setCurrentMainTab] = useState<"home" | "menu">(
@@ -2005,6 +2015,9 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
               label: "Cart",
               icon: <IconShoppingCart className="w-5 h-5 stroke-[2]" />,
               badge: cartCount > 0 ? cartCount : undefined,
+              onPointerDown: () => {
+                router.prefetch(`/menu/${cafe.slug}/cart${tableQuery}`);
+              },
               onClick: () => {
                 setActiveBottomTab("cart");
                 onOpenCart();
@@ -2016,6 +2029,9 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
               icon: <IconClipboardList className="w-5 h-5 stroke-[2]" />,
               badge: activeOrdersCount > 0 ? activeOrdersCount : undefined,
               badgeColor: "bg-emerald-400",
+              onPointerDown: () => {
+                router.prefetch(`/menu/${cafe.slug}/orders${tableQuery}`);
+              },
               onClick: () => {
                 setActiveBottomTab("orders");
                 if (onOpenOrders) {
@@ -2059,6 +2075,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={tab.onClick}
+                onPointerDown={(tab as any).onPointerDown}
                 whileTap={{ scale: 0.92 }}
                 title={tab.label}
                 className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full cursor-pointer focus:outline-none"

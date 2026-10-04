@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 export type ErrorCode =
   | "UNAUTHORIZED"
+  | "SESSION_EXPIRED"
   | "PASSWORD_CHANGE_REQUIRED"
   | "INVALID_OWNER_ACCOUNT"
   | "FORBIDDEN"
@@ -50,6 +51,7 @@ export class AppError extends Error {
     } else {
       switch (code) {
         case "UNAUTHORIZED":
+        case "SESSION_EXPIRED":
           this.statusCode = 401;
           break;
         case "PASSWORD_CHANGE_REQUIRED":

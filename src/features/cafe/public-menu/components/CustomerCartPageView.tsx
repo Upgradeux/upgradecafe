@@ -635,6 +635,21 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
   const isTakeawayParam = (name: string | null | undefined): boolean =>
     !!name && name.toLowerCase() === "takeaway";
 
+  // Dining Mode & Strict Table QR Claim (Approach A)
+  const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY">(
+    isTakeawayParam(tableParamName) || isTakeawayParam(table?.tableNumber) ? "TAKEAWAY" : "DINE_IN"
+  );
+  const [takeawayGuestName, setTakeawayGuestName] = useState("");
+  const [showTakeawayNameError, setShowTakeawayNameError] = useState(false);
+  const [selectedTableNumber, setSelectedTableNumber] = useState<string>(
+    table?.tableNumber && !isTakeawayParam(table.tableNumber)
+      ? table.tableNumber
+      : tableParamName && !isTakeawayParam(tableParamName)
+        ? tableParamName
+        : ""
+  );
+  const [tableError, setTableError] = useState<string | null>(null);
+
   // Active table name is resolved from claimed table, direct table prop, or table param name
   // Exclude "Takeaway" as it's not a real table
   const activeTableName = useMemo(() => {
@@ -723,43 +738,24 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
               latest.orderNumber,
             );
           } catch {}
-        } else if (json.isTerminal || json.data.length === 0) {
-          // Terminal or no active orders: clear active orders & release claimed table
+        } else if (json.isTerminal) {
+          // Terminal: all active orders for this visit finished, end session & release table
           setActiveOrders([]);
           setActiveOrderId(null);
           try {
             localStorage.removeItem(`cafe_active_order_id_${cafe.slug}`);
             localStorage.removeItem(`cafe_active_order_num_${cafe.slug}`);
+            localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
           } catch {}
-
-          // Check if URL has a REAL table param (not "Takeaway" which is a stale artifact)
-          const urlTableParam =
-            typeof window !== "undefined"
-              ? new URLSearchParams(window.location.search).get("table")
-              : null;
-          const urlHasRealTable =
-            (urlTableParam && !isTakeawayParam(urlTableParam)) ||
-            (typeof window !== "undefined" &&
-              new URLSearchParams(window.location.search).has("qr"));
-          if (!urlHasRealTable) {
-            try {
-              localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
-            } catch {}
-            setClaimedTable(null);
-            setSelectedTableNumber("");
-          }
-
-          // Clean stale "Takeaway" from URL if present
-          if (urlTableParam && isTakeawayParam(urlTableParam)) {
-            try {
-              const cleanUrl = `/menu/${cafe.slug}/cart`;
-              window.history.replaceState(
-                { ...window.history.state, as: cleanUrl, url: cleanUrl },
-                "",
-                cleanUrl,
-              );
-            } catch {}
-          }
+          setClaimedTable(null);
+          setSelectedTableNumber("");
+          try {
+            fetch(`/api/cafe/${cafe.slug}/sessions`, { method: "DELETE" });
+          } catch {}
+        } else if (json.data.length === 0) {
+          // No active orders placed yet (customer just seated / ordering)
+          setActiveOrders([]);
+          setActiveOrderId(null);
         }
       }
     } catch {}
@@ -960,7 +956,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         } else if (
           parsedClaim?.tableNumber &&
           (!parsedClaim.claimedAt ||
-            Date.now() - parsedClaim.claimedAt < 4 * 60 * 60 * 1000)
+            Date.now() - parsedClaim.claimedAt < 15 * 60 * 1000)
         ) {
           existingClaim = parsedClaim;
           setClaimedTable(parsedClaim);
@@ -971,41 +967,105 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         }
       }
 
-      // 1b. If table prop was passed from QR scan or URL, only lock if available or has active order
+      // 1b. If table prop was passed from QR scan or URL, lock table
       // Skip if table name is "Takeaway" (stale from past orders)
       if (table?.tableNumber && !isTakeawayParam(table.tableNumber)) {
-        const isOccupied = (table.status || "").toUpperCase() === "OCCUPIED";
-        const hasActiveOrder = savedActiveOrderId != null;
-        if (!isOccupied || hasActiveOrder) {
-          const claimObj = {
-            id: table.id,
-            tableNumber: table.tableNumber,
+        const claimObj = {
+          id: table.id,
+          tableNumber: table.tableNumber,
+          qrIdentifier: table.qrIdentifier || null,
+          claimedAt: Date.now(),
+        };
+        setClaimedTable(claimObj);
+        setSelectedTableNumber(table.tableNumber);
+        setOrderType("DINE_IN");
+        try {
+          localStorage.setItem(
+            `cafe_claimed_table_${cafe.slug}`,
+            JSON.stringify(claimObj),
+          );
+        } catch {}
+
+        // Ensure server-authoritative session cookie is established
+        fetch(`/api/cafe/${cafe.slug}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
             qrIdentifier: table.qrIdentifier || null,
-            claimedAt: Date.now(),
-          };
-          setClaimedTable(claimObj);
-          setSelectedTableNumber(table.tableNumber);
-          setOrderType("DINE_IN");
-          try {
-            localStorage.setItem(
-              `cafe_claimed_table_${cafe.slug}`,
-              JSON.stringify(claimObj),
-            );
-          } catch {}
-        } else {
-          // If table is OCCUPIED by someone else and visitor has no active order, strip from URL
-          if (typeof window !== "undefined") {
-            const cleanUrl = `/menu/${cafe.slug}/cart`;
-            window.history.replaceState(
-              { ...window.history.state, as: cleanUrl, url: cleanUrl },
-              "",
-              cleanUrl,
-            );
-          }
-        }
-      } else if (tableParamName && !existingClaim) {
+            tableNumber: table.tableNumber,
+          }),
+        }).catch(() => {});
+      } else if (tableParamName && !existingClaim && !isTakeawayParam(tableParamName)) {
         setSelectedTableNumber(tableParamName);
         setOrderType("DINE_IN");
+        fetch(`/api/cafe/${cafe.slug}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            tableNumber: tableParamName,
+          }),
+        }).catch(() => {});
+      } else if (!table && !tableParamName) {
+        // Query server session cookie as authoritative source
+        fetch(`/api/cafe/${cafe.slug}/sessions`, { credentials: "include" })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data?.success && data?.active && data?.table) {
+              const claimObj = {
+                id: data.table.id,
+                tableNumber: data.table.tableNumber,
+                qrIdentifier: data.table.qrIdentifier || null,
+                claimedAt: Date.now(),
+              };
+              setClaimedTable(claimObj);
+              setSelectedTableNumber(data.table.tableNumber);
+              setOrderType("DINE_IN");
+              try {
+                localStorage.setItem(
+                  `cafe_claimed_table_${cafe.slug}`,
+                  JSON.stringify(claimObj),
+                );
+              } catch {}
+            } else if (data?.active === false) {
+              // Dining session expired due to inactivity or concluded
+              setClaimedTable(null);
+              setSelectedTableNumber("");
+              try {
+                localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
+              } catch {}
+
+              // Determine if guest user vs authenticated account
+              const savedProfile = localStorage.getItem(
+                `cafe_customer_profile_${cafe.slug}`
+              );
+              let isGuest = true;
+              if (savedProfile) {
+                try {
+                  const p = JSON.parse(savedProfile);
+                  if (
+                    p?.id &&
+                    !p?.isGuest &&
+                    !p.id.startsWith("cust_") &&
+                    !p.id.startsWith("usr_")
+                  ) {
+                    isGuest = false;
+                  }
+                } catch {}
+              }
+
+              // Guest: clear cart upon session expiration
+              // Logged-in: preserve persistent account cart, require QR scan for dine-in checkout
+              if (isGuest) {
+                setCart([]);
+                try {
+                  localStorage.removeItem(`cafe_cart_${cafe.slug}`);
+                } catch {}
+              }
+            }
+          })
+          .catch(() => {});
       }
 
       // 2. Restore active waitlist entry
@@ -1390,7 +1450,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
   ]);
 
   // Claim table from QR scan (strict verification passed)
-  const handleTableClaimedFromQr = async (
+  const handleTableClaimedFromQr = useCallback(async (
     tableNum: string,
     tableId: string,
     qrIdent?: string | null,
@@ -1457,6 +1517,17 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
       // Ignore
     }
 
+    // Ensure server-authoritative session cookie is established
+    fetch(`/api/cafe/${cafe.slug}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        qrIdentifier,
+        tableNumber: tableNum,
+      }),
+    }).catch(() => {});
+
     // Seamlessly update current URL query parameter to keep table synced in browser address bar
     if (typeof window !== "undefined") {
       const newUrl = `/menu/${cafe.slug}/cart?table=${encodeURIComponent(tableNum)}${
@@ -1476,7 +1547,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         "Your table is occupied and your cart is synced. Place your order now!",
       variant: "success",
     });
-  };
+  }, [cafe.slug, readyTableData, waitlistEntry, toast]);
 
   // Allow customer to release/vacate claimed table if they leave or made a mistake
   const handleVacateClaimedTable = () => {
@@ -1485,6 +1556,9 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
     } catch {}
     setClaimedTable(null);
     setSelectedTableNumber("");
+    try {
+      fetch(`/api/cafe/${cafe.slug}/sessions`, { method: "DELETE" });
+    } catch {}
     if (typeof window !== "undefined") {
       const newUrl = `/menu/${cafe.slug}/cart`;
       window.history.replaceState(
@@ -1522,26 +1596,14 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
     });
   }, [localTablesList, hasActiveOrderOnTable, readyTableData]);
 
-  // Seated guest check: only true if they arrived with QR/URL for an AVAILABLE table,
-  // or they hold an ACTIVE ORDER or verified waitlist hold on an OCCUPIED table
+  // Seated guest check: true if they arrived with QR/URL/active session for a valid table
   const isCurrentlySeatedGuest = useMemo(() => {
     if (!activeTableName) return false;
     const matched = localTablesList.find(
       (t) => t.tableNumber.toLowerCase() === activeTableName.toLowerCase(),
     );
-    // If the table is AVAILABLE and arrived via QR or table URL
-    if (
-      matched &&
-      (matched.status || "AVAILABLE").toUpperCase() === "AVAILABLE"
-    ) {
-      return Boolean(isQrScanned || table || tableParamName);
-    }
-    // If the table is OCCUPIED, only count as seated if customer holds active order or waitlist hold
-    if (matched && (matched.status || "").toUpperCase() === "OCCUPIED") {
-      return (
-        hasActiveOrderOnTable(matched.id, matched.tableNumber) ||
-        Boolean(readyTableData && readyTableData.id === matched.id)
-      );
+    if (matched) {
+      return Boolean(isQrScanned || table || tableParamName || claimedTable);
     }
     return Boolean(isQrScanned && activeTableName);
   }, [
@@ -1550,32 +1612,13 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
     isQrScanned,
     table,
     tableParamName,
-    hasActiveOrderOnTable,
-    readyTableData,
+    claimedTable,
   ]);
 
   const isSeatedGuest = isCurrentlySeatedGuest;
   const isTableLocked = Boolean(isCurrentlySeatedGuest && activeTableName);
   const hasNoTablesForGuest =
     !isCurrentlySeatedGuest && availableTables.length === 0;
-
-  // Dining Mode & Strict Table QR Claim (Approach A)
-  // Auto-detect takeaway mode if the URL had "Takeaway" as the table param (from a previous takeaway order)
-  const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY">(
-    isTakeawayParam(tableParamName) || isTakeawayParam(table?.tableNumber) ? "TAKEAWAY" : "DINE_IN"
-  );
-
-  // Takeaway guest name prompt state
-  const [takeawayGuestName, setTakeawayGuestName] = useState("");
-  const [showTakeawayNameError, setShowTakeawayNameError] = useState(false);
-  const [selectedTableNumber, setSelectedTableNumber] = useState<string>(
-    isCurrentlySeatedGuest && activeTableName
-      ? activeTableName
-      : isCurrentlySeatedGuest && claimedTable?.tableNumber
-        ? claimedTable.tableNumber
-        : "",
-  );
-  const [tableError, setTableError] = useState<string | null>(null);
 
   // Keep selectedTableNumber in sync strictly with verified QR scan session
   useEffect(() => {
@@ -1816,6 +1859,14 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         JSON.stringify(updatedCart),
       );
     } catch (e) {}
+
+    // Refresh 15-minute inactivity window on meaningful customer action
+    fetch(`/api/cafe/${cafe.slug}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action: "activity" }),
+    }).catch(() => {});
   };
 
   const handleUpdateQuantity = (cartItemId: string, newQty: number) => {
@@ -1852,7 +1903,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
     if (itemToRemove) {
       toast({
         title: "Item Removed",
-        description: `${itemToRemove.menuItem.name} removed from your order.`,
+        description: `${itemToRemove.menuItem.name} removed from your cart.`,
         variant: "info",
       });
     }
@@ -2375,8 +2426,8 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
     toast({
       title: "Promo Removed",
       description: hasFreeItem
-        ? "Offer and complimentary item removed from order."
-        : "Discount removed from order.",
+        ? "Offer and complimentary item removed from cart."
+        : "Discount removed from cart.",
       variant: "info",
     });
   };

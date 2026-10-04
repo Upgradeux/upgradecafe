@@ -240,8 +240,8 @@ export async function POST(
       { status: 201 }
     );
 
-    // Set secure HTTP-only cookie with session duration
-    const maxAge = (validatedData.orderType === "TAKEAWAY" ? 2 : 4) * 3600;
+    // Set secure HTTP-only cookie with rolling session duration
+    const maxAge = 48 * 3600;
     response.cookies.set(cookieName, sessionResult.rawToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

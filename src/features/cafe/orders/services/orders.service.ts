@@ -5,7 +5,7 @@ import { guestSessions } from "@/lib/db/schema/guest-sessions";
 import { menuItems } from "@/lib/db/schema/menu-items";
 import { eq, and, ne, inArray, desc, asc, sql, ilike, or, gte } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
-import { GuestSessionService } from "./guest-session.service";
+import { GuestSessionService, INACTIVITY_TIMEOUT_MS } from "./guest-session.service";
 import {
   CreateOrderInput,
   OrderStatus,
@@ -312,10 +312,14 @@ export class OrdersService {
       }
     }
 
-    // Verify guest session belongs to this cafe if provided
+    // Verify guest session belongs to this cafe and is active if provided
     if (input.guestSessionId) {
       const [sess] = await db
-        .select({ id: guestSessions.id })
+        .select({
+          id: guestSessions.id,
+          status: guestSessions.status,
+          lastActivityAt: guestSessions.lastActivityAt,
+        })
         .from(guestSessions)
         .where(
           and(
@@ -331,6 +335,44 @@ export class OrdersService {
           message: "The guest session is invalid or belongs to another café.",
           statusCode: 401,
         });
+      }
+
+      if (sess.status !== "ACTIVE") {
+        throw new AppError({
+          code: "SESSION_EXPIRED",
+          message: "Dining session has expired. Please scan your table QR code again.",
+          statusCode: 401,
+        });
+      }
+
+      // Check if session has no prior orders and has exceeded 15 minutes of inactivity
+      const existingOrders = await db
+        .select({ status: orders.status })
+        .from(orders)
+        .where(eq(orders.guestSessionId, sess.id));
+
+      const hasActiveOrders = existingOrders.some((o) =>
+        ["NEW", "PREPARING", "READY", "SERVED"].includes(o.status)
+      );
+
+      const now = new Date();
+      if (!hasActiveOrders && existingOrders.length === 0) {
+        if (
+          now.getTime() - new Date(sess.lastActivityAt).getTime() >
+          INACTIVITY_TIMEOUT_MS
+        ) {
+          await db
+            .update(guestSessions)
+            .set({ status: "EXPIRED", updatedAt: now })
+            .where(eq(guestSessions.id, sess.id));
+
+          throw new AppError({
+            code: "SESSION_EXPIRED",
+            message:
+              "Dining session has expired due to inactivity. Please scan your table QR code again.",
+            statusCode: 401,
+          });
+        }
       }
     }
 

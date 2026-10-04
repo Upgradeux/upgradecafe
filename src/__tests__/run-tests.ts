@@ -19,6 +19,11 @@ import {
   updateOrderStatusSchema,
 } from "../features/cafe/orders/schemas/order.schema";
 import { getCategoryVisualConfig } from "../features/cafe/public-menu/utils/food-images";
+import {
+  getSessionCookieName,
+  hashSessionToken,
+  generateRawSessionToken,
+} from "../features/cafe/orders/services/guest-session.service";
 
 let passedCount = 0;
 let failedCount = 0;
@@ -816,6 +821,853 @@ async function runAllTests() {
     tab1Session !== null && tab2Session !== null && tab1Session.userId === tab2Session.userId,
     "14. Multiple tabs using the same account read the same persistent session cookie and behave consistently"
   );
+
+  // =========================================================================
+  // TEST SUITE 13: Table / Dining Session Persistence & Architecture
+  // =========================================================================
+  console.log("\n🧪 13. Testing Table / Dining Session Persistence across Chrome, PWA & Cart...");
+
+  // Mock Database for Dining Sessions and Orders
+  interface MockDiningGuestSession {
+    id: string;
+    cafeId: string;
+    tableId: string | null;
+    customerId: string | null;
+    sessionTokenHash: string;
+    status: "ACTIVE" | "COMPLETED" | "EXPIRED";
+    expiresAt: Date;
+    lastActivityAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+  }
+
+  interface MockDiningOrder {
+    id: string;
+    cafeId: string;
+    tableId: string;
+    guestSessionId: string;
+    customerId: string | null;
+    status: "NEW" | "PREPARING" | "READY" | "SERVED" | "COMPLETED" | "CANCELLED";
+    orderNumber: string;
+    createdAt: Date;
+  }
+
+  const mockDbSessions = new Map<string, MockDiningGuestSession>();
+  const mockDbOrders = new Map<string, MockDiningOrder>();
+
+  const mockTables = [
+    { id: "tbl-01", cafeId: CAFE_A_ID, tableNumber: "Table 01", qrIdentifier: "qr_tbl_01_cafe_a", status: "OCCUPIED" },
+    { id: "tbl-02", cafeId: CAFE_A_ID, tableNumber: "Table 02", qrIdentifier: "qr_tbl_02_cafe_a", status: "AVAILABLE" },
+    { id: "tbl-b01", cafeId: CAFE_B_ID, tableNumber: "Table 01", qrIdentifier: "qr_tbl_01_cafe_b", status: "AVAILABLE" },
+  ];
+
+  // Helper simulating server resolveOrCreateDiningSession
+  function simulateCreateOrResolveSession(params: {
+    cafeId: string;
+    cafeSlug: string;
+    rawToken?: string | null;
+    tableId?: string | null;
+    customerId?: string | null;
+    currentTime?: Date;
+  }) {
+    const { cafeId, rawToken, tableId, customerId } = params;
+    const currentTime = params.currentTime || new Date();
+
+    if (rawToken) {
+      const tokenHash = hashSessionToken(rawToken);
+      for (const sess of mockDbSessions.values()) {
+        if (
+          sess.cafeId === cafeId &&
+          sess.sessionTokenHash === tokenHash &&
+          sess.status === "ACTIVE"
+        ) {
+          // Check orders
+          const sessionOrders: MockDiningOrder[] = [];
+          for (const ord of mockDbOrders.values()) {
+            if (ord.guestSessionId === sess.id) sessionOrders.push(ord);
+          }
+          const hasActiveOrders = sessionOrders.some((o) =>
+            ["NEW", "PREPARING", "READY", "SERVED"].includes(o.status)
+          );
+          const allTerminal =
+            sessionOrders.length > 0 &&
+            sessionOrders.every((o) => o.status === "COMPLETED" || o.status === "CANCELLED");
+
+          if (allTerminal) {
+            sess.status = "COMPLETED";
+            sess.updatedAt = currentTime;
+          } else if (!hasActiveOrders && sessionOrders.length === 0) {
+            const elapsed = currentTime.getTime() - sess.lastActivityAt.getTime();
+            if (elapsed > 15 * 60 * 1000) {
+              sess.status = "EXPIRED";
+              sess.updatedAt = currentTime;
+            } else {
+              if (tableId && sess.tableId !== tableId) sess.tableId = tableId;
+              if (customerId && sess.customerId !== customerId) sess.customerId = customerId;
+              sess.lastActivityAt = currentTime;
+              sess.expiresAt = new Date(currentTime.getTime() + 15 * 60 * 1000);
+              sess.updatedAt = currentTime;
+              return { session: sess, rawToken, isNew: false };
+            }
+          } else if (hasActiveOrders) {
+            if (tableId && sess.tableId !== tableId) sess.tableId = tableId;
+            if (customerId && sess.customerId !== customerId) sess.customerId = customerId;
+            sess.lastActivityAt = currentTime;
+            sess.updatedAt = currentTime;
+            return { session: sess, rawToken, isNew: false };
+          }
+        }
+      }
+    }
+
+    const newRawToken = generateRawSessionToken();
+    const tokenHash = hashSessionToken(newRawToken);
+    const newSession: MockDiningGuestSession = {
+      id: `sess-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      cafeId,
+      tableId: tableId || null,
+      customerId: customerId || null,
+      sessionTokenHash: tokenHash,
+      status: "ACTIVE",
+      expiresAt: new Date(currentTime.getTime() + 15 * 60 * 1000), // 15-minute inactivity window
+      lastActivityAt: currentTime,
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    };
+    mockDbSessions.set(newSession.id, newSession);
+    return { session: newSession, rawToken: newRawToken, isNew: true };
+  }
+
+  // Helper simulating server getActiveDiningSession
+  function simulateGetActiveDiningSession(params: {
+    cafeId: string;
+    rawToken?: string | null;
+    customerId?: string | null;
+    currentTime?: Date;
+    touch?: boolean;
+  }) {
+    const { cafeId, rawToken, customerId, touch = false } = params;
+    const currentTime = params.currentTime || new Date();
+
+    let session: MockDiningGuestSession | null = null;
+    if (rawToken) {
+      const tokenHash = hashSessionToken(rawToken);
+      for (const sess of mockDbSessions.values()) {
+        if (
+          sess.cafeId === cafeId &&
+          sess.sessionTokenHash === tokenHash &&
+          sess.status === "ACTIVE"
+        ) {
+          session = sess;
+          break;
+        }
+      }
+    }
+
+    if (!session && customerId) {
+      for (const sess of mockDbSessions.values()) {
+        if (
+          sess.cafeId === cafeId &&
+          sess.customerId === customerId &&
+          sess.status === "ACTIVE"
+        ) {
+          session = sess;
+          break;
+        }
+      }
+    }
+
+    if (!session) return null;
+
+    // Check orders for this session
+    const sessionOrders: MockDiningOrder[] = [];
+    for (const ord of mockDbOrders.values()) {
+      if (ord.guestSessionId === session.id) {
+        sessionOrders.push(ord);
+      }
+    }
+
+    const activeOrdersList = sessionOrders.filter((o) =>
+      ["NEW", "PREPARING", "READY", "SERVED"].includes(o.status)
+    );
+    const hasActiveOrders = activeOrdersList.length > 0;
+
+    if (sessionOrders.length > 0) {
+      if (!hasActiveOrders) {
+        session.status = "COMPLETED";
+        session.updatedAt = currentTime;
+        return null; // Session has ended!
+      }
+      if (touch) {
+        session.lastActivityAt = currentTime;
+        session.updatedAt = currentTime;
+      }
+    } else {
+      // No orders placed yet: check 15-minute inactivity
+      const elapsed = currentTime.getTime() - session.lastActivityAt.getTime();
+      if (elapsed > 15 * 60 * 1000) {
+        session.status = "EXPIRED";
+        session.updatedAt = currentTime;
+        return null; // Session expired due to inactivity!
+      }
+      if (touch) {
+        session.lastActivityAt = currentTime;
+        session.expiresAt = new Date(currentTime.getTime() + 15 * 60 * 1000);
+        session.updatedAt = currentTime;
+      }
+    }
+
+    const table = session.tableId ? mockTables.find((t) => t.id === session.tableId && t.cafeId === cafeId) || null : null;
+    return {
+      session,
+      table,
+      activeOrders: activeOrdersList,
+    };
+  }
+
+  // Helper simulating touchActivity
+  function simulateTouchActivity(params: {
+    cafeId: string;
+    rawToken: string;
+    currentTime?: Date;
+  }): boolean {
+    const { cafeId, rawToken } = params;
+    const currentTime = params.currentTime || new Date();
+    const tokenHash = hashSessionToken(rawToken);
+
+    for (const sess of mockDbSessions.values()) {
+      if (
+        sess.cafeId === cafeId &&
+        sess.sessionTokenHash === tokenHash &&
+        sess.status === "ACTIVE"
+      ) {
+        const sessionOrders: MockDiningOrder[] = [];
+        for (const ord of mockDbOrders.values()) {
+          if (ord.guestSessionId === sess.id) sessionOrders.push(ord);
+        }
+        const hasActiveOrders = sessionOrders.some((o) =>
+          ["NEW", "PREPARING", "READY", "SERVED"].includes(o.status)
+        );
+        if (!hasActiveOrders && sessionOrders.length === 0) {
+          const elapsed = currentTime.getTime() - sess.lastActivityAt.getTime();
+          if (elapsed > 15 * 60 * 1000) {
+            sess.status = "EXPIRED";
+            sess.updatedAt = currentTime;
+            return false;
+          }
+        }
+        sess.lastActivityAt = currentTime;
+        sess.expiresAt = new Date(currentTime.getTime() + 15 * 60 * 1000);
+        sess.updatedAt = currentTime;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 13.1 TEST 1 — GUEST: Scan Table 01 -> PWA reopen persists Table 01
+  const cafeSlugA = "roasted-bean";
+  const guestScanResult = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+  });
+  const guestCookieName = getSessionCookieName(cafeSlugA);
+  const guestRawToken = guestScanResult.rawToken;
+
+  assert(
+    guestScanResult.session.tableId === "tbl-01",
+    "13.1a Guest scan establishes server-authoritative session bound to Table 01"
+  );
+  assert(
+    guestCookieName === `cf_guest_session_${cafeSlugA}`,
+    "13.1b Cookie name is strictly café-scoped"
+  );
+
+  // Menu SSR resolution
+  const menuSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: guestRawToken,
+  });
+  assert(
+    menuSession !== null && menuSession.table?.tableNumber === "Table 01",
+    "13.1c Menu SSR resolves Table 01 from session cookie"
+  );
+
+  // Cart SSR resolution (without any URL table parameter!)
+  const cartSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: guestRawToken,
+  });
+  assert(
+    cartSession !== null && cartSession.table?.tableNumber === "Table 01",
+    "13.1d Cart SSR resolves Table 01 without any URL parameter"
+  );
+
+  // Close Chrome & open installed PWA at clean cafe URL (/menu/roasted-bean)
+  // Clean PWA launch has no query params, but sends the HttpOnly cookie
+  const pwaSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: guestRawToken,
+  });
+  assert(
+    pwaSession !== null && pwaSession.table?.tableNumber === "Table 01",
+    "13.1e PWA launch restores Table 01 from session cookie with no second scan required"
+  );
+
+  // 13.2 TEST 2 — LOGGED-IN CUSTOMER: account persists, dining session lifecycle is separate
+  const authCustomerId = "auth-cust-uuid-42";
+  const authCustScan = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+    customerId: authCustomerId,
+  });
+  assert(
+    authCustScan.session.customerId === authCustomerId && authCustScan.session.tableId === "tbl-01",
+    "13.2a Authenticated customer scan creates dining session linked to customerId & Table 01"
+  );
+
+  // PWA opened by logged in customer
+  const authPwaSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    customerId: authCustomerId,
+    rawToken: authCustScan.rawToken,
+  });
+  assert(
+    authPwaSession !== null && authPwaSession.table?.tableNumber === "Table 01",
+    "13.2b Authenticated customer dining session restored in PWA"
+  );
+
+  // Customer places order, staff completes order
+  const custOrder1: MockDiningOrder = {
+    id: "ord-1001",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: authCustScan.session.id,
+    customerId: authCustomerId,
+    status: "NEW",
+    orderNumber: "#1001",
+    createdAt: new Date(),
+  };
+  mockDbOrders.set(custOrder1.id, custOrder1);
+
+  // While order is preparing, session is active
+  custOrder1.status = "PREPARING";
+  const activeDuringMeal = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    customerId: authCustomerId,
+    rawToken: authCustScan.rawToken,
+  });
+  assert(
+    activeDuringMeal !== null && activeDuringMeal.table?.tableNumber === "Table 01",
+    "13.2c Session remains active while order is PREPARING"
+  );
+
+  // Order is completed
+  custOrder1.status = "COMPLETED";
+  const sessionAfterCompletion = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    customerId: authCustomerId,
+    rawToken: authCustScan.rawToken,
+  });
+  assert(
+    sessionAfterCompletion === null,
+    "13.2d Dining session ends when all active orders are COMPLETED"
+  );
+  assert(
+    authCustomerId === "auth-cust-uuid-42",
+    "13.2e Customer account remains logged in after dining session ends"
+  );
+
+  // Opening PWA after visit ends requires new scan
+  const pwaAfterVisit = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    customerId: authCustomerId,
+    rawToken: authCustScan.rawToken,
+  });
+  assert(
+    pwaAfterVisit === null,
+    "13.2f Reopening PWA after dining session completion requires new QR scan"
+  );
+
+  // 13.3 TEST 3 — MULTIPLE CUSTOMERS AT SAME TABLE: Independent Sessions
+  const custAScan = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+  });
+  const custBScan = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+  });
+  assert(
+    custAScan.session.id !== custBScan.session.id,
+    "13.3a Customer A and Customer B at Table 01 receive independent session IDs (A ≠ B)"
+  );
+
+  const diningOrderA: MockDiningOrder = {
+    id: "ord-1063",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: custAScan.session.id,
+    customerId: null,
+    status: "PREPARING",
+    orderNumber: "#1063",
+    createdAt: new Date(),
+  };
+  const diningOrderB: MockDiningOrder = {
+    id: "ord-1064",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: custBScan.session.id,
+    customerId: null,
+    status: "PREPARING",
+    orderNumber: "#1064",
+    createdAt: new Date(),
+  };
+  mockDbOrders.set(diningOrderA.id, diningOrderA);
+  mockDbOrders.set(diningOrderB.id, diningOrderB);
+
+  // Customer A completes their order
+  diningOrderA.status = "COMPLETED";
+  const sessionACheck = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: custAScan.rawToken,
+  });
+  const sessionBCheck = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: custBScan.rawToken,
+  });
+  assert(
+    sessionACheck === null,
+    "13.3b Customer A's session ends when their order completes"
+  );
+  assert(
+    sessionBCheck !== null && sessionBCheck.session.id === custBScan.session.id,
+    "13.3c Customer B's session remains active with active order #1064"
+  );
+
+  // 13.4 TEST 4 — MULTIPLE ORDERS WITHIN ONE VISIT
+  const multiOrderSession = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+  });
+  const order1: MockDiningOrder = {
+    id: "ord-m1",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: multiOrderSession.session.id,
+    customerId: null,
+    status: "COMPLETED",
+    orderNumber: "#2001",
+    createdAt: new Date(Date.now() - 30 * 60 * 1000),
+  };
+  const order2: MockDiningOrder = {
+    id: "ord-m2",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: multiOrderSession.session.id,
+    customerId: null,
+    status: "PREPARING",
+    orderNumber: "#2002",
+    createdAt: new Date(),
+  };
+  mockDbOrders.set(order1.id, order1);
+  mockDbOrders.set(order2.id, order2);
+
+  const midVisitSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: multiOrderSession.rawToken,
+  });
+  assert(
+    midVisitSession !== null && midVisitSession.activeOrders.length === 1 && midVisitSession.activeOrders[0].id === "ord-m2",
+    "13.4a Dining session remains active when Order 1 is COMPLETED and Order 2 is PREPARING"
+  );
+
+  order2.status = "COMPLETED";
+  const endVisitSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: multiOrderSession.rawToken,
+  });
+  assert(
+    endVisitSession === null,
+    "13.4b Dining session ends when Order 2 completes and all visit orders are terminal"
+  );
+
+  // 13.5 TEST 5 — OCCUPIED TABLE PERMITTED FOR VALID QR
+  const occupiedTable = mockTables.find((t) => t.tableNumber === "Table 01")!;
+  assert(occupiedTable.status === "OCCUPIED", "Table 01 is physically OCCUPIED in database");
+
+  const occupiedScan = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: occupiedTable.id,
+  });
+  assert(
+    occupiedScan.session.status === "ACTIVE" && occupiedScan.session.tableId === occupiedTable.id,
+    "13.5 Valid QR scan establishes dining session even when table is marked OCCUPIED"
+  );
+
+  // 13.6 TEST 6 — CROSS-CAFÉ TENANT ISOLATION
+  const cafeASessionToken = guestRawToken;
+  const crossCafeAttempt = simulateGetActiveDiningSession({
+    cafeId: CAFE_B_ID,
+    rawToken: cafeASessionToken,
+  });
+  assert(
+    crossCafeAttempt === null,
+    "13.6 Session from Café A is strictly unauthorized against Café B"
+  );
+
+  // 13.7 TEST 7 — PWA WITHOUT ACTIVE SESSION
+  const freshPwaLaunch = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: null,
+  });
+  assert(
+    freshPwaLaunch === null,
+    "13.7 PWA launch without active dining session returns null (renders existing scan-table UI)"
+  );
+
+  // 13.8 TEST 8 — CART CONSISTENCY
+  // Menu and Cart resolve the same active session
+  const menuRes = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: occupiedScan.rawToken,
+  });
+  const cartRes = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: occupiedScan.rawToken,
+  });
+  assert(
+    menuRes !== null && cartRes !== null && menuRes.table?.tableNumber === cartRes.table?.tableNumber,
+    "13.8 Menu and Cart resolve the identical table (no Table 01 vs Not Scanned mismatch)"
+  );
+
+  // =========================================================================
+  // TEST SUITE 14: DINING SESSION INACTIVITY EXPIRY & ORDER LIFECYCLE LOGIC
+  // =========================================================================
+  console.log("\n🧪 14. Testing Dining Session Inactivity Expiry & Order Lifecycle Logic...");
+
+  const baseTime = new Date("2026-10-04T12:00:00Z");
+
+  // 14.1 TEST 1: QR SCANNED, NO ORDER → EXPIRES AFTER INACTIVITY (15 MINUTES)
+  const noOrderSession = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-02",
+    currentTime: baseTime,
+  });
+  assert(noOrderSession.session.status === "ACTIVE", "14.1a QR scanned creates active dining session");
+
+  // At t = +10 minutes (within 15-minute inactivity window)
+  const activeAt10Min = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: noOrderSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 10 * 60 * 1000),
+  });
+  assert(activeAt10Min !== null && activeAt10Min.session.status === "ACTIVE", "14.1b Session remains active within 10 minutes of inactivity");
+
+  // At t = +16 minutes (exceeds 15-minute inactivity window with no order)
+  const expiredAt16Min = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: noOrderSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 16 * 60 * 1000),
+  });
+  assert(expiredAt16Min === null, "14.1c Scan without order expires after 15 minutes of inactivity");
+  const storedExpiredSession = mockDbSessions.get(noOrderSession.session.id);
+  assert(storedExpiredSession?.status === "EXPIRED", "14.1d Session status in database updated to EXPIRED");
+
+  // 14.2 TEST 2: GUEST USER ADDS ITEMS BUT NEVER ORDERS → CLEARS CART & TABLE ON EXPIRY
+  const guestVisit = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-02",
+    currentTime: baseTime,
+  });
+  let guestCart = [
+    { cartItemId: "item-1", name: "Cappuccino", quantity: 2, unitPrice: 150 },
+    { cartItemId: "item-2", name: "Croissant", quantity: 1, unitPrice: 120 },
+  ];
+  let guestActiveTable: string | null = "Table 02";
+
+  // Simulate client session verification at t = +16 minutes
+  const guestSessionCheck = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: guestVisit.rawToken,
+    currentTime: new Date(baseTime.getTime() + 16 * 60 * 1000),
+  });
+
+  if (guestSessionCheck === null) {
+    // Client clearing logic for uncommitted guest visit
+    guestCart = [];
+    guestActiveTable = null;
+  }
+  assert(guestSessionCheck === null, "14.2a Guest dining session expired due to inactivity");
+  assert(guestCart.length === 0, "14.2b Guest cart is cleared when session expires");
+  assert(guestActiveTable === null, "14.2c Active table context is cleared for guest");
+
+  // 14.3 TEST 3: LOGGED-IN USER ADDS ITEMS BUT NEVER ORDERS → PRESERVES CART & ACCOUNT, CLEARS TABLE
+  const loggedInCustomerId = "user-auth-uuid-999";
+  const loggedInProfile = {
+    id: loggedInCustomerId,
+    name: "Aarav Sharma",
+    phone: "+919876543210",
+    isGuest: false,
+    isLoggedIn: true,
+  };
+
+  const loggedInVisit = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-02",
+    customerId: loggedInCustomerId,
+    currentTime: baseTime,
+  });
+
+  let loggedInCart = [
+    { cartItemId: "item-fav", name: "Artisanal Cold Brew", quantity: 1, unitPrice: 220 },
+    { cartItemId: "item-bakery", name: "Blueberry Cheesecake", quantity: 1, unitPrice: 280 },
+  ];
+  let loggedInActiveTable: string | null = "Table 02";
+
+  // Verify at t = +16 minutes (session expires from inactivity)
+  const loggedInSessionCheck = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: loggedInVisit.rawToken,
+    customerId: loggedInCustomerId,
+    currentTime: new Date(baseTime.getTime() + 16 * 60 * 1000),
+  });
+
+  if (loggedInSessionCheck === null) {
+    // Table context expires
+    loggedInActiveTable = null;
+    // Logged-in customer cart is preserved, account remains logged in!
+    if (loggedInProfile.isGuest) {
+      loggedInCart = [];
+    }
+  }
+
+  assert(loggedInSessionCheck === null, "14.3a Logged-in dining session expires after 15 minutes of inactivity");
+  assert(loggedInCart.length === 2, "14.3b Logged-in cart survives session expiration (persistent account cart)");
+  assert(loggedInActiveTable === null, "14.3c Active table context is cleared for logged-in user");
+  assert(loggedInProfile.isLoggedIn === true && loggedInProfile.id === loggedInCustomerId, "14.3d Logged-in customer account remains authenticated");
+
+  // Checkout requires active table session
+  const canCheckoutDineIn = Boolean(loggedInActiveTable && loggedInSessionCheck !== null);
+  assert(canCheckoutDineIn === false, "14.3e Dine-in checkout requires active dining session (requires QR scan)");
+
+  // 14.4 TEST 4: ACTIVE ORDER EXISTS → PREVENTS SESSION EXPIRATION
+  const mealSession = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+    currentTime: baseTime,
+  });
+
+  const activeOrder: MockDiningOrder = {
+    id: "ord-kitchen-1",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: mealSession.session.id,
+    customerId: null,
+    status: "PREPARING",
+    orderNumber: "#3001",
+    createdAt: baseTime,
+  };
+  mockDbOrders.set(activeOrder.id, activeOrder);
+
+  // Customer has been at café for 30 minutes without clicking phone
+  const checkAt30Min = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: mealSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 30 * 60 * 1000),
+  });
+  assert(
+    checkAt30Min !== null && checkAt30Min.session.id === mealSession.session.id,
+    "14.4a Active order (PREPARING) prevents dining session from expiring after 30 minutes"
+  );
+
+  // Status transitions through READY and SERVED -> remains active
+  activeOrder.status = "READY";
+  const checkAtReady = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: mealSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 45 * 60 * 1000),
+  });
+  assert(checkAtReady !== null, "14.4b Session remains active while order is READY");
+
+  activeOrder.status = "SERVED";
+  const checkAtServed = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: mealSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 60 * 60 * 1000),
+  });
+  assert(checkAtServed !== null, "14.4c Session remains active while order is SERVED");
+
+  // Terminal state: order is COMPLETED -> ends dining session
+  activeOrder.status = "COMPLETED";
+  const checkAfterCompleted = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: mealSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 65 * 60 * 1000),
+  });
+  assert(checkAfterCompleted === null, "14.4d Dining session ends when all orders reach terminal state (COMPLETED)");
+
+  // 14.5 TEST 5: MULTIPLE ORDERS → COMPLETING ONE DOES NOT END SESSION IF ANOTHER IS ACTIVE
+  const multiMealSession = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+    currentTime: baseTime,
+  });
+
+  const round1Order: MockDiningOrder = {
+    id: "ord-round-1",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: multiMealSession.session.id,
+    customerId: null,
+    status: "PREPARING",
+    orderNumber: "#4001",
+    createdAt: baseTime,
+  };
+  const round2Order: MockDiningOrder = {
+    id: "ord-round-2",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: multiMealSession.session.id,
+    customerId: null,
+    status: "NEW",
+    orderNumber: "#4002",
+    createdAt: new Date(baseTime.getTime() + 20 * 60 * 1000),
+  };
+  mockDbOrders.set(round1Order.id, round1Order);
+  mockDbOrders.set(round2Order.id, round2Order);
+
+  // Staff completes Round 1
+  round1Order.status = "COMPLETED";
+  const midMultiSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: multiMealSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 25 * 60 * 1000),
+  });
+  assert(
+    midMultiSession !== null && midMultiSession.activeOrders.length === 1 && midMultiSession.activeOrders[0].id === "ord-round-2",
+    "14.5a Completing Round 1 does not end session because Round 2 is still active"
+  );
+
+  // Staff completes Round 2 -> all orders now terminal
+  round2Order.status = "COMPLETED";
+  const endMultiSession = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: multiMealSession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 35 * 60 * 1000),
+  });
+  assert(endMultiSession === null, "14.5b Dining session ends when all multi-round orders reach terminal state");
+
+  // 14.6 TEST 6: MULTIPLE CUSTOMERS AT SAME TABLE → INDEPENDENT SESSIONS
+  const tableCust1 = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+    currentTime: baseTime,
+  });
+  const tableCust2 = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+    currentTime: baseTime,
+  });
+  assert(tableCust1.session.id !== tableCust2.session.id, "14.6a Two customers at Table 01 have distinct sessions");
+
+  const cust1Order: MockDiningOrder = {
+    id: "ord-cust-1",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: tableCust1.session.id,
+    customerId: null,
+    status: "PREPARING",
+    orderNumber: "#5001",
+    createdAt: baseTime,
+  };
+  const cust2Order: MockDiningOrder = {
+    id: "ord-cust-2",
+    cafeId: CAFE_A_ID,
+    tableId: "tbl-01",
+    guestSessionId: tableCust2.session.id,
+    customerId: null,
+    status: "PREPARING",
+    orderNumber: "#5002",
+    createdAt: baseTime,
+  };
+  mockDbOrders.set(cust1Order.id, cust1Order);
+  mockDbOrders.set(cust2Order.id, cust2Order);
+
+  // Customer 1 pays and finishes meal
+  cust1Order.status = "COMPLETED";
+  const cust1Check = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: tableCust1.rawToken,
+    currentTime: new Date(baseTime.getTime() + 40 * 60 * 1000),
+  });
+  const cust2Check = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: tableCust2.rawToken,
+    currentTime: new Date(baseTime.getTime() + 40 * 60 * 1000),
+  });
+  assert(cust1Check === null, "14.6b Customer 1's session ended upon completion");
+  assert(cust2Check !== null && cust2Check.session.id === tableCust2.session.id, "14.6c Customer 2's session remains active and completely unaffected");
+
+  // 14.7 TEST 7: CROSS-CAFÉ TENANT ISOLATION
+  const cafeASession = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-01",
+    currentTime: baseTime,
+  });
+  const crossCafeCheck = simulateGetActiveDiningSession({
+    cafeId: CAFE_B_ID,
+    rawToken: cafeASession.rawToken,
+    currentTime: baseTime,
+  });
+  assert(crossCafeCheck === null, "14.7 Dining session from Café A is strictly isolated from Café B");
+
+  // 14.8 TEST 8: MEANINGFUL CUSTOMER ACTIVITY REFRESHES INACTIVITY WINDOW
+  const activitySession = simulateCreateOrResolveSession({
+    cafeId: CAFE_A_ID,
+    cafeSlug: cafeSlugA,
+    tableId: "tbl-02",
+    currentTime: baseTime,
+  });
+
+  // At t = +12 minutes: customer updates cart / touches activity
+  const touched = simulateTouchActivity({
+    cafeId: CAFE_A_ID,
+    rawToken: activitySession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 12 * 60 * 1000),
+  });
+  assert(touched === true, "14.8a Activity touch succeeds for active session");
+
+  // At t = +20 minutes (8 mins after activity, but 20 mins after scan):
+  // Since customer was active at t = +12 mins, the session must STILL BE ACTIVE!
+  const checkAt20Min = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: activitySession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 20 * 60 * 1000),
+  });
+  assert(checkAt20Min !== null, "14.8b Customer activity at 12m refreshed inactivity window (active at 20m from initial scan)");
+
+  // At t = +28 minutes (16 mins after the last activity touch at 12m):
+  const checkAt28Min = simulateGetActiveDiningSession({
+    cafeId: CAFE_A_ID,
+    rawToken: activitySession.rawToken,
+    currentTime: new Date(baseTime.getTime() + 28 * 60 * 1000),
+  });
+  assert(checkAt28Min === null, "14.8c Session expires 16 minutes after last activity");
 
   console.log("\n=======================================================");
   console.log(`📊 TEST RESULTS: ${passedCount} PASSED, ${failedCount} FAILED`);

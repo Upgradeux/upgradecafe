@@ -8,6 +8,8 @@ import { menuItems, menuItemVariants } from "@/lib/db/schema/menu-items";
 import { tables } from "@/lib/db/schema/tables";
 import { eq, and, asc } from "drizzle-orm";
 import { getCafeThemeStyles } from "@/lib/theme/theme-tokens";
+import { cookies } from "next/headers";
+import { GuestSessionService } from "@/features/cafe/orders/services/guest-session.service";
 import { ItemDetailPageView } from "@/features/cafe/public-menu/components/ItemDetailPageView";
 import { ModifiersService } from "@/features/cafe/menu/services/modifiers.service";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -155,6 +157,25 @@ export default async function ItemDetailPage({
           t.tableNumber.toLowerCase() === cleanParam ||
           t.tableNumber.toLowerCase().replace(/^table\s*/i, "") === cleanNum
       ) || null;
+  }
+
+  // Active dining session restoration via HTTP-only cookie
+  if (!resolvedTable) {
+    try {
+      const cookieStore = await cookies();
+      const guestCookie = cookieStore.get(`cf_guest_session_${cafeSlug}`)?.value;
+      if (guestCookie) {
+        const session = await GuestSessionService.getActiveDiningSession({
+          cafeId: cafe.id,
+          rawToken: guestCookie,
+        });
+        if (session && session.table) {
+          resolvedTable = session.table;
+        }
+      }
+    } catch (sessionErr) {
+      console.warn("Failed checking active dining session cookie in item detail:", sessionErr);
+    }
   }
 
   return (

@@ -80,15 +80,27 @@ export default async function CustomerOrdersPage({
     notFound();
   }
 
-  // Resolve cafe settings & theme
-  const settings = await safeDbQuery(async () => {
-    const [s] = await db
-      .select()
-      .from(cafeSettings)
-      .where(eq(cafeSettings.cafeId, cafe.id))
-      .limit(1);
-    return s || null;
-  }, null);
+  // Resolve cafe settings & table concurrently to eliminate sequential DB latency
+  const [settings, qrTable] = await Promise.all([
+    safeDbQuery(async () => {
+      const [s] = await db
+        .select()
+        .from(cafeSettings)
+        .where(eq(cafeSettings.cafeId, cafe.id))
+        .limit(1);
+      return s || null;
+    }, null),
+    qrParam
+      ? safeDbQuery(async () => {
+          const [t] = await db
+            .select()
+            .from(tables)
+            .where(and(eq(tables.cafeId, cafe.id), eq(tables.qrIdentifier, qrParam)))
+            .limit(1);
+          return t || null;
+        }, null)
+      : Promise.resolve(null),
+  ]);
 
   const menuThemeId =
     themeQueryParam ||
@@ -105,17 +117,7 @@ export default async function CustomerOrdersPage({
   };
 
   // Resolve dining table if table or qr param passed
-  let resolvedTable = null;
-  if (qrParam) {
-    resolvedTable = await safeDbQuery(async () => {
-      const [t] = await db
-        .select()
-        .from(tables)
-        .where(and(eq(tables.cafeId, cafe.id), eq(tables.qrIdentifier, qrParam)))
-        .limit(1);
-      return t || null;
-    }, null);
-  }
+  let resolvedTable = qrTable;
 
   if (!resolvedTable && tableParam) {
     const cleanParam = tableParam.trim().toLowerCase();
@@ -160,6 +162,16 @@ export default async function CustomerOrdersPage({
       }, []);
 
       if (sessionList && sessionList.length > 0) {
+        if (!resolvedTable && sessionList[0].tableId) {
+          const [t] = await safeDbQuery(async () => {
+            return db
+              .select()
+              .from(tables)
+              .where(and(eq(tables.id, sessionList[0].tableId!), eq(tables.cafeId, cafe.id)))
+              .limit(1);
+          }, []);
+          if (t) resolvedTable = t;
+        }
         initialActiveOrders = await safeDbQuery(async () => {
           return GuestSessionService.getActiveOrdersForSession(sessionList[0].id, cafe.id);
         }, []);

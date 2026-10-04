@@ -17,6 +17,12 @@ import {
   getCachedCafeBySlug,
   getPublicMenuCatalog,
 } from "@/features/cafe/public-menu/services/public-menu-cache.service";
+import { cookies, headers } from "next/headers";
+import {
+  GuestSessionService,
+  getSessionCookieName,
+} from "@/features/cafe/orders/services/guest-session.service";
+import { auth } from "@/lib/auth/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +91,36 @@ export default async function PublicMenuPage({
       ) || null;
   }
 
+  // Check active dining session from secure HTTP-only cookie if no table in URL (e.g. installed PWA launch)
+  if (!resolvedTable) {
+    try {
+      const cookieStore = await cookies();
+      const cookieName = getSessionCookieName(cafeSlug);
+      const rawToken = cookieStore.get(cookieName)?.value;
+
+      let customerId: string | null = null;
+      try {
+        const authSession = await auth.api.getSession({ headers: await headers() });
+        if (authSession?.user?.id) {
+          customerId = authSession.user.id;
+        }
+      } catch {}
+
+      if (rawToken || customerId) {
+        const activeDining = await GuestSessionService.getActiveDiningSession({
+          cafeId: cafe.id,
+          rawToken,
+          customerId,
+        });
+        if (activeDining?.table) {
+          resolvedTable = activeDining.table;
+        }
+      }
+    } catch (sessionErr) {
+      console.warn("Failed to resolve active dining session on menu SSR:", sessionErr);
+    }
+  }
+
   const menuThemeId = settings?.digitalMenuTheme || settings?.themePreset || "roast";
   const themeStyles = {
     ...getCafeThemeStyles(
@@ -109,7 +145,7 @@ export default async function PublicMenuPage({
           initialOffers={offersList}
           salesStats30d={salesStats30d}
           table={resolvedTable}
-          tableParamName={tableParam || null}
+          tableParamName={resolvedTable ? resolvedTable.tableNumber : tableParam || null}
           initialLayout={
             layoutParam === "classic_list"
               ? "classic_list"

@@ -170,20 +170,34 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
         provider: "google",
         callbackURL: window.location.href,
       });
-      if (res && (res as any).url) {
+
+      // Better Auth returns { data?: { url?: string }, error?: { message?: string } }
+      if (res?.error) {
+        setIsGoogleLoading(false);
+        toast({
+          title: "Google sign-in unavailable",
+          description:
+            res.error.message ||
+            "Google authentication is not configured for this deployment.",
+          variant: "error",
+        });
         return;
       }
-      setIsGoogleLoading(false);
-      toast({
-        title: "Google sign-in unavailable",
-        description: "Google authentication is not configured for this deployment.",
-        variant: "error",
-      });
-    } catch {
+
+      // If an explicit redirect URL was returned, navigate to it
+      const redirectUrl = (res as any)?.data?.url || (res as any)?.url;
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+        return;
+      }
+
+      // If no error, the redirect is in progress; keep loading state active without triggering false error toast
+      return;
+    } catch (err: any) {
       setIsGoogleLoading(false);
       toast({
         title: "Google sign-in failed",
-        description: "Please try again or use your email address or phone number.",
+        description: err?.message || "Please try again or use your email address or phone number.",
         variant: "error",
       });
     }
@@ -260,6 +274,11 @@ export const CustomerAuthView: React.FC<CustomerAuthViewProps> = ({
             recaptchaVerifierRef.current.clear();
           } catch {}
           recaptchaVerifierRef.current = null;
+        }
+
+        const containerEl = document.getElementById("firebase-recaptcha-container");
+        if (containerEl) {
+          containerEl.innerHTML = "";
         }
 
         const verifier = new RecaptchaVerifier(

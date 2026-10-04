@@ -223,36 +223,88 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
 
       // Load claimed table session or persist URL table if scanned
       if (table?.tableNumber) {
-        const isOccupied = (table.status || "").toUpperCase() === "OCCUPIED";
-        const hasActiveOrder = savedActiveOrderId != null;
-        if (!isOccupied || hasActiveOrder) {
-          try {
-            localStorage.setItem(
-              `cafe_claimed_table_${cafe.slug}`,
-              JSON.stringify({
-                id: table.id,
-                tableNumber: table.tableNumber,
-                qrIdentifier: table.qrIdentifier || null,
-                claimedAt: Date.now(),
-              })
-            );
-          } catch {}
-        }
+        try {
+          localStorage.setItem(
+            `cafe_claimed_table_${cafe.slug}`,
+            JSON.stringify({
+              id: table.id,
+              tableNumber: table.tableNumber,
+              qrIdentifier: table.qrIdentifier || null,
+              claimedAt: Date.now(),
+            })
+          );
+        } catch {}
+
+        fetch(`/api/cafe/${cafe.slug}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            qrIdentifier: table.qrIdentifier || null,
+            tableNumber: table.tableNumber,
+          }),
+        }).catch(() => {});
+      } else if (tableParamName && !isTakeawayParam(tableParamName)) {
+        fetch(`/api/cafe/${cafe.slug}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            tableNumber: tableParamName,
+          }),
+        }).catch(() => {});
       } else if (!table && !tableParamName) {
-        const savedClaim = localStorage.getItem(`cafe_claimed_table_${cafe.slug}`);
-        if (savedClaim) {
-          const parsed = JSON.parse(savedClaim);
-          // If customer has NO active order, purge stale claim from previous visits!
-          if (!savedActiveOrderId) {
-            localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
-            setClaimedTableName(null);
-          } else if (
-            parsed?.tableNumber &&
-            (!parsed.claimedAt || Date.now() - parsed.claimedAt < 4 * 60 * 60 * 1000)
-          ) {
-            setClaimedTableName(parsed.tableNumber);
-          }
-        }
+        // Query server session cookie as authoritative source
+        fetch(`/api/cafe/${cafe.slug}/sessions`, { credentials: "include" })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data?.success && data?.active && data?.table) {
+              setClaimedTableName(data.table.tableNumber);
+              try {
+                localStorage.setItem(
+                  `cafe_claimed_table_${cafe.slug}`,
+                  JSON.stringify({
+                    id: data.table.id,
+                    tableNumber: data.table.tableNumber,
+                    qrIdentifier: data.table.qrIdentifier || null,
+                    claimedAt: Date.now(),
+                  })
+                );
+              } catch {}
+            } else if (data?.active === false) {
+              setClaimedTableName(null);
+              try {
+                localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
+              } catch {}
+
+              // Determine if guest user vs authenticated account
+              const savedProfile = localStorage.getItem(`cafe_customer_profile_${cafe.slug}`);
+              let isGuest = true;
+              if (savedProfile) {
+                try {
+                  const p = JSON.parse(savedProfile);
+                  if (
+                    p?.id &&
+                    !p?.isGuest &&
+                    !p.id.startsWith("cust_") &&
+                    !p.id.startsWith("usr_")
+                  ) {
+                    isGuest = false;
+                  }
+                } catch {}
+              }
+
+              // Guest: clear cart upon session expiration
+              // Logged-in: preserve persistent account cart
+              if (isGuest) {
+                setCart([]);
+                try {
+                  localStorage.removeItem(`cafe_cart_${cafe.slug}`);
+                } catch {}
+              }
+            }
+          })
+          .catch(() => {});
       }
     } catch (e) {
       // LocalStorage access safe guard
@@ -280,19 +332,18 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
         }
 
         if (!table && !tableParamName) {
-          const savedActiveOrderId = localStorage.getItem(`cafe_active_order_id_${cafe.slug}`);
           const savedClaim = localStorage.getItem(`cafe_claimed_table_${cafe.slug}`);
-          if (savedClaim && savedActiveOrderId) {
-            const parsed = JSON.parse(savedClaim);
-            if (
-              parsed?.tableNumber &&
-              (!parsed.claimedAt || Date.now() - parsed.claimedAt < 4 * 60 * 60 * 1000)
-            ) {
-              setClaimedTableName(parsed.tableNumber);
-              return;
-            }
+          if (savedClaim) {
+            try {
+              const parsed = JSON.parse(savedClaim);
+              if (
+                parsed?.tableNumber &&
+                (!parsed.claimedAt || Date.now() - parsed.claimedAt < 15 * 60 * 1000)
+              ) {
+                setClaimedTableName(parsed.tableNumber);
+              }
+            } catch {}
           }
-          setClaimedTableName(null);
         }
       } catch (e) {}
     };
@@ -317,11 +368,22 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
 
   // Intelligent mobile prefetching for instant perceived navigation
   useEffect(() => {
-    const q = activeTableName ? `?table=${encodeURIComponent(activeTableName)}` : "";
-    router.prefetch(`/menu/${cafe.slug}/cart${q}`);
-    router.prefetch(`/menu/${cafe.slug}/profile${q}`);
-    router.prefetch(`/menu/${cafe.slug}/orders${q}`);
-  }, [cafe.slug, activeTableName, router]);
+    const qrParam = table?.qrIdentifier || null;
+    const baseTableQuery = activeTableName ? `?table=${encodeURIComponent(activeTableName)}` : "";
+    const fullTableQuery = activeTableName
+      ? `?table=${encodeURIComponent(activeTableName)}${qrParam ? `&qr=${encodeURIComponent(qrParam)}` : ""}`
+      : "";
+
+    // Prefetch matching target paths
+    router.prefetch(`/menu/${cafe.slug}/orders${fullTableQuery}`);
+    router.prefetch(`/menu/${cafe.slug}/cart${fullTableQuery}`);
+    router.prefetch(`/menu/${cafe.slug}/profile${fullTableQuery}`);
+    if (fullTableQuery !== baseTableQuery) {
+      router.prefetch(`/menu/${cafe.slug}/orders${baseTableQuery}`);
+      router.prefetch(`/menu/${cafe.slug}/cart${baseTableQuery}`);
+      router.prefetch(`/menu/${cafe.slug}/profile${baseTableQuery}`);
+    }
+  }, [cafe.slug, activeTableName, table?.qrIdentifier, router]);
 
   // Sync active orders from server (guest session cookie, active order ID, or customerId)
   const syncActiveOrders = useCallback(async () => {
@@ -355,23 +417,23 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
             localStorage.setItem(`cafe_active_order_id_${cafe.slug}`, latest.id);
             localStorage.setItem(`cafe_active_order_num_${cafe.slug}`, latest.orderNumber);
           } catch {}
-        } else if (json.isTerminal || json.data.length === 0) {
-          // Clear active order and claimed table if server confirms order has completed or cancelled
+        } else if (json.isTerminal) {
+          // Terminal: all active orders for this visit finished, end dining session
           setActiveOrders([]);
           setActiveOrderId(null);
           setActiveOrderNumber(null);
           try {
             localStorage.removeItem(`cafe_active_order_id_${cafe.slug}`);
             localStorage.removeItem(`cafe_active_order_num_${cafe.slug}`);
+            localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
           } catch {}
-
-          const hasUrlTable = Boolean(table?.tableNumber || tableParamName);
-          if (!hasUrlTable) {
-            try {
-              localStorage.removeItem(`cafe_claimed_table_${cafe.slug}`);
-            } catch {}
-            setClaimedTableName(null);
-          }
+          setClaimedTableName(null);
+          fetch(`/api/cafe/${cafe.slug}/sessions`, { method: "DELETE" }).catch(() => {});
+        } else if (json.data.length === 0) {
+          // No active orders placed yet (customer seated and browsing)
+          setActiveOrders([]);
+          setActiveOrderId(null);
+          setActiveOrderNumber(null);
         }
       }
     } catch {
@@ -466,6 +528,15 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     }
   };
 
+  const touchCustomerActivity = useCallback(() => {
+    fetch(`/api/cafe/${cafe.slug}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action: "activity" }),
+    }).catch(() => {});
+  }, [cafe.slug]);
+
   // Add Item to Cart (with localStorage persistence)
   const handleAddToCart = (newCartItem: DigitalMenuCartItem) => {
     setCart((prev) => {
@@ -490,29 +561,17 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
       return updated;
     });
 
+    touchCustomerActivity();
+
     toast({
-      title: "Added to Order",
-      description: `${newCartItem.quantity}× ${newCartItem.menuItem.name} added`,
+      title: "Added to Cart",
+      description: `${newCartItem.quantity}× ${newCartItem.menuItem.name} added to cart`,
       variant: "success",
     });
   };
 
   // Quick Fast-Add (+ Button on card)
   const handleQuickAdd = (item: MenuItem) => {
-    // If it has complex customizations or is a beverage, navigate to slug page to customize
-    const isBeverage =
-      item.temperature === "HOT" ||
-      item.temperature === "COLD" ||
-      item.name.toLowerCase().includes("coffee") ||
-      item.name.toLowerCase().includes("latte") ||
-      item.name.toLowerCase().includes("tea");
-
-    if (isBeverage) {
-      const tableQuery = activeTableName ? `?table=${encodeURIComponent(activeTableName)}` : "";
-      transitionNavigate(router, `/menu/${cafe.slug}/${item.slug}${tableQuery}`);
-      return;
-    }
-
     const cartItem: DigitalMenuCartItem = {
       cartItemId: `${item.id}-default`,
       menuItem: item,
@@ -533,15 +592,15 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     if (inCart.quantity > 1) {
       handleUpdateQuantity(inCart.cartItemId, inCart.quantity - 1);
       toast({
-        title: "Order Updated",
-        description: `${inCart.quantity - 1}× ${item.name} in order`,
+        title: "Cart Updated",
+        description: `${inCart.quantity - 1}× ${item.name} in cart`,
         variant: "info",
       });
     } else {
       handleRemoveFromCart(inCart.cartItemId);
       toast({
-        title: "Item Removed",
-        description: `${item.name} removed from order`,
+        title: "Removed from Cart",
+        description: `${item.name} removed from cart`,
         variant: "info",
       });
     }
@@ -560,6 +619,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
       } catch {}
       return updated;
     });
+    touchCustomerActivity();
   };
 
   // Remove Item from Cart
@@ -571,6 +631,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
       } catch {}
       return updated;
     });
+    touchCustomerActivity();
   };
 
   // Save Customer Profile
@@ -937,11 +998,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     // 5. UX Decision:
     // If cart has items, immediately navigate user to /cart so they see the discount and free reward applied!
     // If cart is empty, notify user that coupon is active and ready for dishes from the menu.
-    const shouldIncludeTable = Boolean(
-      table?.tableNumber ||
-      tableParamName ||
-      (activeTableName && (activeOrders.length > 0 || activeOrderId))
-    );
+    const shouldIncludeTable = Boolean(activeTableName);
     const q = shouldIncludeTable && activeTableName
       ? `?table=${encodeURIComponent(activeTableName)}${table?.qrIdentifier ? `&qr=${encodeURIComponent(table.qrIdentifier)}` : ""}`
       : "";
@@ -1009,12 +1066,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     cartCount: totalCartCount,
     cartTotal: cartSubtotal,
     onSelectItem: (item) => {
-      const shouldIncludeTable = Boolean(
-        table?.tableNumber ||
-        tableParamName ||
-        (activeTableName && (activeOrders.length > 0 || activeOrderId))
-      );
-      const q = shouldIncludeTable && activeTableName
+      const q = activeTableName
         ? `?table=${encodeURIComponent(activeTableName)}${table?.qrIdentifier ? `&qr=${encodeURIComponent(table.qrIdentifier)}` : ""}`
         : "";
       transitionNavigate(router, `/menu/${cafe.slug}/${item.slug}${q}`);
@@ -1022,35 +1074,20 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     onQuickAdd: (item) => handleQuickAdd(item),
     onQuickMinus: (item) => handleQuickMinus(item),
     onOpenCart: () => {
-      const shouldIncludeTable = Boolean(
-        table?.tableNumber ||
-        tableParamName ||
-        (activeTableName && (activeOrders.length > 0 || activeOrderId))
-      );
-      const q = shouldIncludeTable && activeTableName
+      const q = activeTableName
         ? `?table=${encodeURIComponent(activeTableName)}${table?.qrIdentifier ? `&qr=${encodeURIComponent(table.qrIdentifier)}` : ""}`
         : "";
       transitionNavigate(router, `/menu/${cafe.slug}/cart${q}`);
     },
     onOpenOrders: () => {
-      const shouldIncludeTable = Boolean(
-        table?.tableNumber ||
-        tableParamName ||
-        (activeTableName && (activeOrders.length > 0 || activeOrderId))
-      );
-      const q = shouldIncludeTable && activeTableName
+      const q = activeTableName
         ? `?table=${encodeURIComponent(activeTableName)}${table?.qrIdentifier ? `&qr=${encodeURIComponent(table.qrIdentifier)}` : ""}`
         : "";
       transitionNavigate(router, `/menu/${cafe.slug}/orders${q}`);
     },
     onOpenLiveTracker: () => setIsLiveTrackerOpen(true),
     onOpenProfile: () => {
-      const shouldIncludeTable = Boolean(
-        table?.tableNumber ||
-        tableParamName ||
-        (activeTableName && (activeOrders.length > 0 || activeOrderId))
-      );
-      const q = shouldIncludeTable && activeTableName
+      const q = activeTableName
         ? `?table=${encodeURIComponent(activeTableName)}${table?.qrIdentifier ? `&qr=${encodeURIComponent(table.qrIdentifier)}` : ""}`
         : "";
       transitionNavigate(router, `/menu/${cafe.slug}/profile${q}`);

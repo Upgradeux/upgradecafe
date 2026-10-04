@@ -166,12 +166,6 @@ export function validateTableQrCode(
     });
 
     if (matched) {
-      if ((matched.status || "").toUpperCase() === "OCCUPIED") {
-        return {
-          isValid: false,
-          errorMessage: `Table "${matched.tableNumber}" is currently occupied. Please choose an open table or join the waiting list.`,
-        };
-      }
       return {
         isValid: true,
         matchedTableNumber: matched.tableNumber,
