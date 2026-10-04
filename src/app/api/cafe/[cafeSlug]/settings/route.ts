@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { cafeSettings } from "@/lib/db/schema/cafe-settings";
 import { eq } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
+import { invalidateCafePublicMenu } from "@/features/cafe/public-menu/services/public-menu-cache.service";
 import { z } from "zod";
 
 const settingsPatchSchema = z.object({
@@ -125,6 +126,7 @@ export async function PATCH(
     }
 
     try {
+      invalidateCafePublicMenu(cafeSlug);
       revalidatePath(`/menu/${cafeSlug}`);
       revalidatePath(`/menu/${cafeSlug}/[itemSlug]`, "page");
       revalidatePath(`/cafe/${cafeSlug}`);

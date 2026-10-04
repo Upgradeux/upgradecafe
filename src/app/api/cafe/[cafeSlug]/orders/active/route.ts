@@ -45,62 +45,13 @@ export async function GET(
       request.nextUrl.searchParams.get("phone");
 
     const cookieName = getSessionCookieName(cafeSlug);
-    const rawToken =
-      request.cookies.get(cookieName)?.value ||
-      request.headers.get("x-guest-session-token");
+    const rawToken = request.cookies.get(cookieName)?.value || null;
 
     const collectedOrdersMap = new Map<string, any>();
     let terminalFound = false;
 
-    // 1. Authenticated customer flow (by customerId and/or customerPhone)
-    if (customerId && customerId.trim()) {
-      const trimmedCustomerId = customerId.trim();
-
-      if (rawToken && rawToken.trim()) {
-        const tokenHash = hashSessionToken(rawToken.trim());
-        const [deviceSession] = await db
-          .select()
-          .from(guestSessions)
-          .where(
-            and(
-              eq(guestSessions.cafeId, cafe.id),
-              eq(guestSessions.sessionTokenHash, tokenHash)
-            )
-          )
-          .limit(1);
-
-        if (deviceSession && deviceSession.customerId !== trimmedCustomerId) {
-          try {
-            await GuestSessionService.linkCustomerToSession(
-              deviceSession.id,
-              trimmedCustomerId,
-              cafe.id
-            );
-          } catch (linkErr) {
-            console.warn("Failed linking session to customer:", linkErr);
-          }
-        }
-      }
-
-      const activeOrders = await GuestSessionService.getActiveOrdersForCustomer(
-        trimmedCustomerId,
-        cafe.id,
-        customerPhone
-      );
-      for (const ord of activeOrders) {
-        collectedOrdersMap.set(ord.id, ord);
-      }
-    } else if (customerPhone && customerPhone.trim()) {
-      const phoneOrders = await GuestSessionService.getActiveOrdersByPhone(
-        customerPhone.trim(),
-        cafe.id
-      );
-      for (const ord of phoneOrders) {
-        collectedOrdersMap.set(ord.id, ord);
-      }
-    }
-
-    // 2. Guest session token flow (cookie or header)
+    // 1. Resolve and verify active guest session token strictly via HTTP-only cookie
+    let validatedSession: typeof guestSessions.$inferSelect | null = null;
     if (rawToken && rawToken.trim()) {
       const tokenHash = hashSessionToken(rawToken.trim());
       const [session] = await db
@@ -117,6 +68,7 @@ export async function GET(
         .limit(1);
 
       if (session) {
+        validatedSession = session;
         const sessionOrders = await GuestSessionService.getActiveOrdersForSession(
           session.id,
           cafe.id
@@ -127,27 +79,50 @@ export async function GET(
       }
     }
 
-    // 3. Direct Active Order ID Lookup (failsafe when cookie or session token is missing)
-    if (orderIdParam && orderIdParam.trim()) {
-      const [orderRecord] = await db
-        .select()
-        .from(orders)
-        .where(and(eq(orders.id, orderIdParam.trim()), eq(orders.cafeId, cafe.id)))
-        .limit(1);
+    // 2. Authenticated customer flow (only if verified via session or linked to this active guest session)
+    if (customerId && customerId.trim()) {
+      const trimmedCustomerId = customerId.trim();
 
-      if (orderRecord) {
-        // If order is bound to a guest session, fetch all active orders for that session
-        if (orderRecord.guestSessionId) {
-          const sessionOrders = await GuestSessionService.getActiveOrdersForSession(
-            orderRecord.guestSessionId,
-            cafe.id
-          );
-          for (const ord of sessionOrders) {
-            collectedOrdersMap.set(ord.id, ord);
+      // Ensure customerId is either linked to the validated guest session on this device or session exists
+      if (validatedSession) {
+        if (validatedSession.customerId !== trimmedCustomerId) {
+          try {
+            await GuestSessionService.linkCustomerToSession(
+              validatedSession.id,
+              trimmedCustomerId,
+              cafe.id
+            );
+          } catch (linkErr) {
+            console.warn("Failed linking session to customer:", linkErr);
           }
         }
 
-        // If order itself is active in kitchen/prep/ready/served
+        const activeOrders = await GuestSessionService.getActiveOrdersForCustomer(
+          trimmedCustomerId,
+          cafe.id,
+          customerPhone
+        );
+        for (const ord of activeOrders) {
+          collectedOrdersMap.set(ord.id, ord);
+        }
+      }
+    }
+
+    // 3. Specific Order ID Verification: only allow if it belongs to the validated session or customer
+    if (orderIdParam && orderIdParam.trim() && validatedSession) {
+      const [orderRecord] = await db
+        .select()
+        .from(orders)
+        .where(
+          and(
+            eq(orders.id, orderIdParam.trim()),
+            eq(orders.cafeId, cafe.id),
+            eq(orders.guestSessionId, validatedSession.id)
+          )
+        )
+        .limit(1);
+
+      if (orderRecord) {
         if (["NEW", "PREPARING", "READY", "SERVED"].includes(orderRecord.status)) {
           if (!collectedOrdersMap.has(orderRecord.id)) {
             const fullOrder = await OrdersService.getOrderById(orderRecord.id, cafe.id);

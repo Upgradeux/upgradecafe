@@ -90,11 +90,9 @@ export async function POST(
     const body = await request.json();
     const validatedData = createOrderSchema.parse(body);
 
-    // Resolve or create per-device GuestSession via HTTP-only cookie / header token
+    // Resolve or create per-device GuestSession strictly via HTTP-only cookie
     const cookieName = getSessionCookieName(cafeSlug);
-    const cookieToken = request.cookies.get(cookieName)?.value;
-    const headerToken = request.headers.get("x-guest-session-token");
-    const rawToken = cookieToken || headerToken || null;
+    const rawToken = request.cookies.get(cookieName)?.value || null;
 
     // Check if the order is being dispatched by authorized cafe staff (e.g. POS terminal, waiter)
     let isStaff = false;
@@ -238,7 +236,6 @@ export async function POST(
       {
         success: true,
         data: createdOrder,
-        sessionToken: sessionResult.rawToken,
       },
       { status: 201 }
     );

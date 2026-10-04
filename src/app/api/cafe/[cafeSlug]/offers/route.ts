@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveCafeTenant } from "@/lib/auth/tenant-context";
 import { OffersService } from "@/features/cafe/offers/services/offers.service";
 import { AppError } from "@/lib/errors/app-error";
+import { invalidateCafePublicMenu } from "@/features/cafe/public-menu/services/public-menu-cache.service";
 import { z } from "zod";
 
 const createOfferSchema = z.object({
@@ -71,6 +72,7 @@ export async function POST(
       ...validated,
       imageUrl: validated.imageUrl || undefined,
     });
+    invalidateCafePublicMenu(cafeSlug);
 
     return NextResponse.json({ success: true, data: newOffer }, { status: 201 });
   } catch (err) {

@@ -25,6 +25,7 @@ import {
   IconSparkles,
 } from "@tabler/icons-react";
 import { motion } from "motion/react";
+import { transitionNavigate } from "../utils/transitions";
 
 import { FullModifierGroupWithOption } from "@/lib/db/schema/modifiers";
 import { getDigitalMenuVisualTheme } from "@/lib/theme/theme-tokens";
@@ -428,6 +429,12 @@ export const ItemDetailPageView: React.FC<ItemDetailPageViewProps> = ({
       }))
     : [];
 
+  useEffect(() => {
+    const tableQuery = activeTableName ? `?table=${encodeURIComponent(activeTableName)}` : "";
+    router.prefetch(`/menu/${cafe.slug}${tableQuery}`);
+    router.prefetch(`/menu/${cafe.slug}/cart${tableQuery}`);
+  }, [cafe.slug, activeTableName, router]);
+
   const handleScroll = () => {
     if (carouselRef.current) {
       const { scrollLeft, clientWidth } = carouselRef.current;
@@ -438,7 +445,7 @@ export const ItemDetailPageView: React.FC<ItemDetailPageViewProps> = ({
 
   const handleBack = () => {
     const tableQuery = activeTableName ? `?table=${encodeURIComponent(activeTableName)}` : "";
-    router.push(`/menu/${cafe.slug}${tableQuery}`);
+    transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
   };
 
   const handleConfirmAdd = () => {
@@ -569,6 +576,9 @@ export const ItemDetailPageView: React.FC<ItemDetailPageViewProps> = ({
                   src={imgUrl}
                   alt={`${item.name} ${idx + 1}`}
                   className="w-full h-full object-cover"
+                  loading={idx === 0 ? "eager" : "lazy"}
+                  decoding="async"
+                  fetchPriority={idx === 0 ? "high" : "auto"}
                 />
               </div>
             ))}

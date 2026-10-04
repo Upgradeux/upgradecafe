@@ -28,11 +28,11 @@ export async function PATCH(
 ) {
   try {
     const { cafeSlug, groupId } = await params;
-    await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
+    const { cafe } = await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
     const body = await request.json();
 
     const validated = updateModifierGroupSchema.parse(body);
-    const updated = await ModifiersService.updateModifierGroup(groupId, validated);
+    const updated = await ModifiersService.updateModifierGroup(groupId, cafe.id, validated);
 
     return NextResponse.json({ success: true, data: updated });
   } catch (err) {
@@ -46,9 +46,9 @@ export async function DELETE(
 ) {
   try {
     const { cafeSlug, groupId } = await params;
-    await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
+    const { cafe } = await resolveCafeTenant(cafeSlug, ["OWNER", "MANAGER"]);
 
-    const deleted = await ModifiersService.deleteModifierGroup(groupId);
+    const deleted = await ModifiersService.deleteModifierGroup(groupId, cafe.id);
     if (!deleted) {
       throw new AppError({
         code: "NOT_FOUND",

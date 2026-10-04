@@ -61,6 +61,11 @@ export const ClassicListLayout: React.FC<MenuLayoutProps> = ({
                 <img
                   src={cafe.logoKey}
                   alt={cafe.name}
+                  width={32}
+                  height={32}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   className="w-full h-full object-contain"
                 />
               ) : (
@@ -147,13 +152,20 @@ export const ClassicListLayout: React.FC<MenuLayoutProps> = ({
               key={cat.id}
               type="button"
               onClick={() => setSelectedCategoryId(cat.id)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors shadow-xs ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors shadow-xs inline-flex items-center gap-1.5 ${
                 selectedCategoryId === cat.id
                   ? "bg-[var(--color-primary)] text-white"
                   : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-muted)]"
               }`}
             >
-              {cat.name}
+              {cat.imageUrl && (
+                <img
+                  src={cat.imageUrl}
+                  alt=""
+                  className="w-4 h-4 rounded-full object-cover shrink-0"
+                />
+              )}
+              <span>{cat.name}</span>
             </button>
           ))}
         </div>
@@ -182,7 +194,15 @@ export const ClassicListLayout: React.FC<MenuLayoutProps> = ({
                   </span>
                 </div>
                 <div className="w-16 h-16 rounded-md overflow-hidden bg-[var(--color-background)] border border-[var(--color-border-subtle)] flex-shrink-0">
-                  <img src={itemImg} alt={item.name} className="w-full h-full object-cover" />
+                  <img
+                    src={itemImg}
+                    alt={item.name}
+                    width={64}
+                    height={64}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               </div>
             );
@@ -221,6 +241,10 @@ export const ClassicListLayout: React.FC<MenuLayoutProps> = ({
                     <img
                       src={getMenuItemImageUrl(latestCartItem.menuItem.imageKey, latestCartItem.menuItem.name)}
                       alt={latestCartItem.menuItem.name}
+                      width={36}
+                      height={36}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                   </div>

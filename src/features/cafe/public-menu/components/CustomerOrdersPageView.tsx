@@ -8,6 +8,7 @@ import { Table } from "@/lib/db/schema/tables";
 import { OrderWithItems } from "@/features/cafe/orders/types";
 import { CustomerProfile } from "../types";
 import { getDigitalMenuVisualTheme } from "@/lib/theme/theme-tokens";
+import { transitionNavigate } from "../utils/transitions";
 import { calculateOrderWaitTime } from "@/features/cafe/orders/utils/wait-time";
 import { LiveOrderTrackerModal } from "./LiveOrderTrackerModal";
 import { CustomerUpiModal } from "./CustomerUpiModal";
@@ -154,7 +155,13 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
         setCustomerProfile(JSON.parse(saved));
       }
     } catch {}
-  }, [cafe.slug]);
+
+    // Prefetch common navigation targets
+    try {
+      router.prefetch(`/menu/${cafe.slug}${tableQuery}`);
+      router.prefetch(`/menu/${cafe.slug}/cart${tableQuery}`);
+    } catch {}
+  }, [cafe.slug, router, tableQuery]);
 
   useEffect(() => {
     const updateCartCount = () => {
@@ -264,10 +271,6 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
       if (customerProfile?.phone) {
         headers["x-customer-phone"] = customerProfile.phone;
       }
-      const savedToken = typeof window !== "undefined" ? localStorage.getItem(`cafe_guest_token_${cafe.slug}`) : null;
-      if (savedToken) {
-        headers["x-guest-session-token"] = savedToken;
-      }
       const savedOrderId = typeof window !== "undefined" ? localStorage.getItem(`cafe_active_order_id_${cafe.slug}`) : null;
       if (savedOrderId) {
         headers["x-order-id"] = savedOrderId;
@@ -317,15 +320,60 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
 
   useEffect(() => {
     fetchActiveOrders();
-    const interval = setInterval(() => fetchActiveOrders(false), 4000);
-    return () => clearInterval(interval);
-  }, [fetchActiveOrders]);
+
+    const hasActive =
+      activeOrders.length > 0 ||
+      (typeof window !== "undefined" &&
+        Boolean(localStorage.getItem(`cafe_active_order_id_${cafe.slug}`)));
+    if (!hasActive) return;
+
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (
+        intervalId ||
+        (typeof document !== "undefined" && document.visibilityState === "hidden")
+      )
+        return;
+      intervalId = setInterval(() => fetchActiveOrders(false), 8000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        fetchActiveOrders(false);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+    return () => {
+      stopPolling();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
+  }, [fetchActiveOrders, activeOrders.length, cafe.slug]);
 
   // Reorder handler: puts past items back into cart and navigates to cart
   const handleReorder = (pastOrder: any) => {
     const items = pastOrder.items || [];
     if (items.length === 0) {
-      router.push(`/menu/${cafe.slug}${tableQuery}`);
+      transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
       return;
     }
 
@@ -377,7 +425,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
         variant: "success",
       });
 
-      router.push(`/menu/${cafe.slug}/cart${tableQuery}`);
+      transitionNavigate(router, `/menu/${cafe.slug}/cart${tableQuery}`);
     } catch (e) {
       console.error("Reorder failed", e);
     }
@@ -489,7 +537,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
         <div className="max-w-md mx-auto flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
             className="flex items-center gap-1.5 text-xs font-bold text-[#1C1D1A] py-1.5 px-3 rounded-full bg-white/70 hover:bg-white/95 border border-white/80 shadow-[inset_0_1px_2px_rgba(255,255,255,0.85),0_2px_6px_rgba(0,0,0,0.05)] transition-all cursor-pointer active:scale-95"
           >
             <IconArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -558,7 +606,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+              onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
               style={{
                 backgroundColor: visualTheme.avatarFallbackBg,
                 boxShadow:
@@ -754,7 +802,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
                       <button
                         type="button"
                         onClick={() =>
-                          router.push(`/menu/${cafe.slug}/orders/${ord.id}${tableQuery}`)
+                          transitionNavigate(router, `/menu/${cafe.slug}/orders/${ord.id}${tableQuery}`)
                         }
                         className="py-1.5 px-3 rounded-full bg-white/90 hover:bg-white text-[#1C1D1A] text-[11px] font-semibold border border-black/[0.08] shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.9),0_1.5px_3px_rgba(0,0,0,0.05)] flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 whitespace-nowrap"
                       >
@@ -879,7 +927,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
                         <button
                           type="button"
                           onClick={() =>
-                            router.push(`/menu/${cafe.slug}/orders/${past.id}${tableQuery}`)
+                            transitionNavigate(router, `/menu/${cafe.slug}/orders/${past.id}${tableQuery}`)
                           }
                           className="py-1 px-2.5 rounded-full bg-white/85 hover:bg-white text-[#1C1D1A] text-[10.5px] font-semibold flex items-center gap-0.5 transition-all cursor-pointer active:scale-95 whitespace-nowrap shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
                         >
@@ -982,7 +1030,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
           {/* Home */}
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
             className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
             title="Menu Home"
           >
@@ -992,7 +1040,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
           {/* Full Menu / Categories */}
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}/all-menu${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}/all-menu${tableQuery}`)}
             className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
             title="All Menu Items"
           >
@@ -1002,7 +1050,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
           {/* Cart */}
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}/cart${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}/cart${tableQuery}`)}
             className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
             title="View Cart"
           >
@@ -1046,7 +1094,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
           {/* Offers */}
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}/all-menu?diet=BESTSELLER${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}/all-menu?diet=BESTSELLER${tableQuery}`)}
             className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full text-[#6B7280] hover:text-[#1C1D1A] transition-colors cursor-pointer"
             title="Special Offers"
           >
@@ -1077,7 +1125,7 @@ export const CustomerOrdersPageView: React.FC<CustomerOrdersPageViewProps> = ({
           }}
           onOrderMore={() => {
             setIsLiveTrackerOpen(false);
-            router.push(`/menu/${cafe.slug}${tableQuery}`);
+            transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
           }}
         />
       )}

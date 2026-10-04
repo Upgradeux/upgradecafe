@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cafes } from "@/lib/db/schema/cafes";
 import { tables } from "@/lib/db/schema/tables";
+import { guestSessions } from "@/lib/db/schema/guest-sessions";
 import { eq, and, asc } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
+import { resolveCafeTenant } from "@/lib/auth/tenant-context";
 
 export async function GET(
   _request: NextRequest,
@@ -98,6 +100,26 @@ export async function POST(
       });
     } else if (action === "release") {
       // Release held or freed table back to AVAILABLE
+      const [table] = await db
+        .select({ status: tables.status, currentBillAmount: tables.currentBillAmount })
+        .from(tables)
+        .where(and(eq(tables.id, tableId), eq(tables.cafeId, cafe.id)))
+        .limit(1);
+
+      if (!table) {
+        throw new AppError({
+          code: "TABLE_NOT_FOUND",
+          message: "Table not found",
+          statusCode: 404,
+        });
+      }
+
+      // If table has an active dining bill, only staff/owner can release it
+      if (Number(table.currentBillAmount || 0) > 0) {
+        const { requireCafeMember } = await import("@/lib/permissions/guards");
+        await requireCafeMember(cafe.id);
+      }
+
       const [updated] = await db
         .update(tables)
         .set({

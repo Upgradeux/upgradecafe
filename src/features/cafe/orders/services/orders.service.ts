@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { orders, orderItems, serviceRequests, Order, OrderItem, ServiceRequest } from "@/lib/db/schema/orders";
+import { orders, orderItems, serviceRequests, Order, ServiceRequest } from "@/lib/db/schema/orders";
 import { tables, Table } from "@/lib/db/schema/tables";
 import { guestSessions } from "@/lib/db/schema/guest-sessions";
 import { menuItems } from "@/lib/db/schema/menu-items";
@@ -239,6 +239,101 @@ export class OrdersService {
       });
     }
 
+    // Verify all referenced menu items strictly belong to this cafe tenant and are available
+    const itemIds = input.items
+      .map((i) => i.menuItemId)
+      .filter(Boolean) as string[];
+
+    const itemPriceMap = new Map<string, { price: number; isAvailable: boolean; name: string }>();
+
+    if (itemIds.length > 0) {
+      const validItems = await db
+        .select({
+          id: menuItems.id,
+          price: menuItems.price,
+          isAvailable: menuItems.isAvailable,
+          name: menuItems.name,
+        })
+        .from(menuItems)
+        .where(
+          and(
+            inArray(menuItems.id, itemIds),
+            eq(menuItems.cafeId, cafeId)
+          )
+        );
+
+      if (validItems.length !== new Set(itemIds).size) {
+        throw new AppError({
+          code: "VALIDATION_ERROR",
+          message: "One or more menu items do not belong to this café.",
+          statusCode: 400,
+        });
+      }
+
+      for (const item of validItems) {
+        if (!item.isAvailable) {
+          throw new AppError({
+            code: "ITEM_UNAVAILABLE",
+            message: `"${item.name}" is currently sold out.`,
+            statusCode: 400,
+          });
+        }
+        itemPriceMap.set(item.id, item);
+      }
+    }
+
+    // Authoritative sanitized line items: server database price overrides client price
+    const sanitizedItems = input.items.map((item) => {
+      const dbItem = item.menuItemId ? itemPriceMap.get(item.menuItemId) : null;
+      const authoritativeUnitPrice = dbItem ? dbItem.price : item.unitPrice;
+      const quantity = Math.max(1, Math.floor(item.quantity));
+      return {
+        ...item,
+        unitPrice: authoritativeUnitPrice,
+        quantity,
+        itemTotal: authoritativeUnitPrice * quantity,
+      };
+    });
+
+    // Verify table belongs to this cafe if tableId provided
+    if (input.tableId) {
+      const [tbl] = await db
+        .select({ id: tables.id })
+        .from(tables)
+        .where(and(eq(tables.id, input.tableId), eq(tables.cafeId, cafeId)))
+        .limit(1);
+
+      if (!tbl) {
+        throw new AppError({
+          code: "TABLE_NOT_FOUND",
+          message: "The selected table does not belong to this café.",
+          statusCode: 404,
+        });
+      }
+    }
+
+    // Verify guest session belongs to this cafe if provided
+    if (input.guestSessionId) {
+      const [sess] = await db
+        .select({ id: guestSessions.id })
+        .from(guestSessions)
+        .where(
+          and(
+            eq(guestSessions.id, input.guestSessionId),
+            eq(guestSessions.cafeId, cafeId)
+          )
+        )
+        .limit(1);
+
+      if (!sess) {
+        throw new AppError({
+          code: "UNAUTHORIZED",
+          message: "The guest session is invalid or belongs to another café.",
+          statusCode: 401,
+        });
+      }
+    }
+
     // Handle appending items to an existing active table order (Round 2 / Repeat Order)
     if (input.existingOrderIdToAppend) {
       const [existing] = await db
@@ -248,17 +343,17 @@ export class OrdersService {
         .limit(1);
 
       if (existing) {
-        const addedSubtotal = input.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+        const addedSubtotal = sanitizedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
         const addedTax = Math.round(addedSubtotal * 0.05);
         const addedTotal = addedSubtotal + addedTax;
 
-        const lineItemValues = input.items.map((item) => ({
+        const lineItemValues = sanitizedItems.map((item) => ({
           orderId: existing.id,
           menuItemId: item.menuItemId || null,
           itemName: item.itemName,
           unitPrice: item.unitPrice,
           quantity: item.quantity,
-          itemTotal: item.unitPrice * item.quantity,
+          itemTotal: item.itemTotal,
           variantName: item.variantName || null,
           specialInstructions: item.specialInstructions || null,
           createdAt: new Date(),
@@ -327,12 +422,12 @@ export class OrdersService {
     const totalOrdersCount = Number(countResult?.count || 0);
     const orderNumber = `#${1001 + totalOrdersCount}`;
 
-    // Calculate subtotal
-    const subtotal = input.items.reduce((sum, item) => {
+    // Calculate subtotal from authoritative sanitized items
+    const subtotal = sanitizedItems.reduce((sum, item) => {
       return sum + item.unitPrice * item.quantity;
     }, 0);
 
-    const discount = input.discount || 0;
+    const discount = Math.max(0, input.discount || 0);
     const tax = Math.round((subtotal - discount) * 0.05); // 5% GST standard estimate
     const total = Math.max(0, subtotal - discount + tax);
 
@@ -376,13 +471,13 @@ export class OrdersService {
       .returning();
 
     // Insert snapshot line items
-    const lineItemValues = input.items.map((item) => ({
+    const lineItemValues = sanitizedItems.map((item) => ({
       orderId: createdOrder.id,
       menuItemId: item.menuItemId || null,
       itemName: item.itemName,
       unitPrice: item.unitPrice,
       quantity: item.quantity,
-      itemTotal: item.unitPrice * item.quantity,
+      itemTotal: item.itemTotal,
       variantName: item.variantName || null,
       specialInstructions: item.specialInstructions || null,
       createdAt: new Date(),
@@ -685,6 +780,22 @@ export class OrdersService {
       notes?: string | null;
     }
   ): Promise<ServiceRequest> {
+    if (input.tableId) {
+      const [tbl] = await db
+        .select({ id: tables.id })
+        .from(tables)
+        .where(and(eq(tables.id, input.tableId), eq(tables.cafeId, cafeId)))
+        .limit(1);
+
+      if (!tbl) {
+        throw new AppError({
+          code: "TABLE_NOT_FOUND",
+          message: "The specified table does not belong to this café.",
+          statusCode: 404,
+        });
+      }
+    }
+
     const [created] = await db
       .insert(serviceRequests)
       .values({

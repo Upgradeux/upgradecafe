@@ -22,6 +22,7 @@ export type ErrorCode =
   | "TABLE_OCCUPIED"
   | "TABLE_RESERVED"
   | "TABLE_UNAVAILABLE"
+  | "ITEM_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
 export interface AppErrorOptions {

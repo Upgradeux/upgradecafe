@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { guestSessions, GuestSession } from "@/lib/db/schema/guest-sessions";
 import { orders, orderItems, Order, OrderItem } from "@/lib/db/schema/orders";
 import { menuItems } from "@/lib/db/schema/menu-items";
+import { tables } from "@/lib/db/schema/tables";
 import { users } from "@/lib/db/schema/users";
 import { eq, and, or, gt, inArray, asc } from "drizzle-orm";
 import crypto from "crypto";
@@ -47,10 +48,21 @@ export class GuestSessionService {
     const { cafeId, rawToken, tableId, orderType = "DINE_IN", customerId } = params;
     const now = new Date();
 
+    // Verify tableId belongs to this cafe tenant
+    let verifiedTableId: string | null = null;
+    if (tableId) {
+      const [tableExists] = await db
+        .select({ id: tables.id })
+        .from(tables)
+        .where(and(eq(tables.id, tableId), eq(tables.cafeId, cafeId)))
+        .limit(1);
+      if (tableExists) {
+        verifiedTableId = tableExists.id;
+      }
+    }
+
     // Verify customerId exists in users table before referencing foreign key
     let verifiedCustomerId: string | null = null;
-
-    
     if (customerId) {
       const [userExists] = await db
         .select({ id: users.id })
@@ -85,8 +97,8 @@ export class GuestSessionService {
           updatedAt: now,
         };
 
-        if (tableId && tableId !== existing.tableId) {
-          updates.tableId = tableId;
+        if (verifiedTableId && verifiedTableId !== existing.tableId) {
+          updates.tableId = verifiedTableId;
         }
 
         if (verifiedCustomerId && verifiedCustomerId !== existing.customerId) {
@@ -127,7 +139,7 @@ export class GuestSessionService {
       .insert(guestSessions)
       .values({
         cafeId,
-        tableId: tableId || null,
+        tableId: verifiedTableId || null,
         customerId: verifiedCustomerId || null,
         sessionTokenHash: tokenHash,
         status: "ACTIVE",

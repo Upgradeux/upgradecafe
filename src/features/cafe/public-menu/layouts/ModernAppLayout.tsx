@@ -6,9 +6,9 @@ import { motion, AnimatePresence } from "motion/react";
 import { MenuLayoutProps } from "./types";
 import {
   getMenuItemImageUrl,
-  getCategoryImageUrl,
   getCategoryVisualConfig,
 } from "../utils/food-images";
+import { transitionNavigate } from "../utils/transitions";
 import {
   IconSearch,
   IconAdjustmentsHorizontal,
@@ -290,6 +290,11 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                 <img
                   src={cafe.logoKey}
                   alt={cafe.name}
+                  width={48}
+                  height={48}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
                 {/* Inset specular highlight and inner shadow */}
@@ -402,6 +407,10 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                   <img
                     src={customerProfile.avatarUrl}
                     alt={customerProfile.name}
+                    width={32}
+                    height={32}
+                    loading="eager"
+                    decoding="async"
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -413,6 +422,10 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                 <img
                   src="/avatar-3d.jpg"
                   alt="3D Avatar"
+                  width={32}
+                  height={32}
+                  loading="eager"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
               )}
@@ -580,7 +593,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
             4. CATEGORIES: ROUND PILLS WITH ACCENT RINGS
            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <div className="pt-1 pb-2">
-          <div className="-mx-4 px-4 py-2.5 flex items-start gap-4 sm:gap-5 overflow-x-auto no-scrollbar">
+          <div className="-mx-4 px-4 py-2.5 flex items-start gap-4 sm:gap-5 overflow-x-auto no-scrollbar horizontal-scroll-touch touch-pan-x overscroll-x-contain">
             {/* "All" Category Perfect Circle */}
             <button
               type="button"
@@ -627,7 +640,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
             {/* Each Dish Category */}
             {categories.map((cat) => {
               const isSelected = selectedCategoryId === cat.id;
-              const { imageUrl } = getCategoryVisualConfig(cat.slug, cat.name);
+              const { imageUrl } = getCategoryVisualConfig(cat.slug, cat.name, cat.imageUrl);
 
               return (
                 <button
@@ -653,6 +666,10 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                     <img
                       src={imageUrl}
                       alt={cat.name}
+                      width={72}
+                      height={72}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                     />
                     <div className="absolute inset-0 rounded-full bg-white/10 backdrop-blur-[0.5px] pointer-events-none" />
@@ -872,6 +889,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                                           alt={item.name}
                                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                                           loading="lazy"
+                                          decoding="async"
                                         />
                                         <div className="absolute inset-0 rounded-xl shadow-[inset_0_1.5px_2px_rgba(255,255,255,0.7),inset_0_-1.5px_2px_rgba(0,0,0,0.08)] pointer-events-none" />
                                       </div>
@@ -1146,6 +1164,10 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                                     <img
                                       src={itemImg}
                                       alt={item.name}
+                                      width={48}
+                                      height={48}
+                                      loading="lazy"
+                                      decoding="async"
                                       className="w-full h-full object-cover"
                                     />
                                   </div>
@@ -1999,7 +2021,7 @@ export const ModernAppLayout: React.FC<MenuLayoutProps> = ({
                 if (onOpenOrders) {
                   onOpenOrders();
                 } else {
-                  router.push(`/menu/${cafe.slug}/orders${tableQuery}`);
+                  transitionNavigate(router, `/menu/${cafe.slug}/orders${tableQuery}`);
                 }
               },
               hasPulse: hasActiveOrders && activeOrdersCount === 0,

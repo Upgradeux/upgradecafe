@@ -13,6 +13,11 @@ import { getCafeThemeStyles } from "@/lib/theme/theme-tokens";
 import { PublicMenuCustomerView } from "@/features/cafe/public-menu/components/PublicMenuCustomerView";
 import { ToastProvider } from "@/components/ui/Toast";
 
+import {
+  getCachedCafeBySlug,
+  getPublicMenuCatalog,
+} from "@/features/cafe/public-menu/services/public-menu-cache.service";
+
 export const dynamic = "force-dynamic";
 
 interface PublicMenuPageProps {
@@ -22,15 +27,12 @@ interface PublicMenuPageProps {
 
 export async function generateMetadata({ params }: PublicMenuPageProps) {
   const { cafeSlug } = await params;
-  const [cafe] = await db
-    .select()
-    .from(cafes)
-    .where(eq(cafes.slug, cafeSlug))
-    .limit(1);
+  const cafe = await getCachedCafeBySlug(cafeSlug);
 
   return {
     title: cafe ? `${cafe.name} • Digital Menu` : "Digital Café Menu",
     description: `Browse menu, customize drinks & bakery, and order directly from your table at ${cafe?.name || "the café"}.`,
+    manifest: `/api/cafe/${cafeSlug}/manifest`,
   };
 }
 
@@ -41,77 +43,20 @@ export default async function PublicMenuPage({
   const { cafeSlug } = await params;
   const { table: tableParam, qr: qrParam, layout: layoutParam } = await searchParams;
 
-  // Resolve cafe
-  const [cafe] = await db
-    .select()
-    .from(cafes)
-    .where(eq(cafes.slug, cafeSlug))
-    .limit(1);
-
-  if (!cafe) {
+  // Resolve cached public menu catalog (deduplicated & cached per cafe tenant)
+  const catalog = await getPublicMenuCatalog(cafeSlug);
+  if (!catalog) {
     notFound();
   }
 
-  // Resolve cafe theme
-  const [settings] = await db
-    .select()
-    .from(cafeSettings)
-    .where(eq(cafeSettings.cafeId, cafe.id))
-    .limit(1);
-
-  const menuThemeId = settings?.digitalMenuTheme || settings?.themePreset || "roast";
-  const themeStyles = {
-    ...getCafeThemeStyles(
-      menuThemeId,
-      settings?.fontFamily || "Plus Jakarta Sans"
-    ),
-    colorScheme: "light",
-  };
-
-  // 30-day sales time boundary for popular ranking
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  // Load active categories, active menu items, active offers, and 30-day sales stats
-  const [categoriesList, menuItemsList, offersList, rawSalesStats] = await Promise.all([
-    db
-      .select()
-      .from(categories)
-      .where(and(eq(categories.cafeId, cafe.id), eq(categories.isActive, true)))
-      .orderBy(asc(categories.sortOrder), asc(categories.name)),
-    db
-      .select()
-      .from(menuItems)
-      .where(and(eq(menuItems.cafeId, cafe.id), eq(menuItems.isAvailable, true)))
-      .orderBy(asc(menuItems.sortOrder), asc(menuItems.name)),
-    db
-      .select()
-      .from(offers)
-      .where(and(eq(offers.cafeId, cafe.id), eq(offers.isActive, true)))
-      .orderBy(asc(offers.createdAt)),
-    db
-      .select({
-        menuItemId: orderItems.menuItemId,
-        totalSold: sql<number>`cast(coalesce(sum(${orderItems.quantity}), 0) as integer)`,
-      })
-      .from(orderItems)
-      .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .where(
-        and(
-          eq(orders.cafeId, cafe.id),
-          gte(orders.createdAt, thirtyDaysAgo),
-          ne(orders.status, "CANCELLED")
-        )
-      )
-      .groupBy(orderItems.menuItemId),
-  ]);
-
-  const salesStats30d: Record<string, number> = {};
-  for (const stat of rawSalesStats) {
-    if (stat.menuItemId) {
-      salesStats30d[stat.menuItemId] = Number(stat.totalSold) || 0;
-    }
-  }
+  const {
+    cafe,
+    settings,
+    categoriesList,
+    menuItemsList,
+    offersList,
+    salesStats30d,
+  } = catalog;
 
   // Resolve dining table if table or qr param passed
   let resolvedTable = null;
@@ -139,6 +84,15 @@ export default async function PublicMenuPage({
           t.tableNumber.toLowerCase().replace(/^table\s*/i, "") === cleanNum
       ) || null;
   }
+
+  const menuThemeId = settings?.digitalMenuTheme || settings?.themePreset || "roast";
+  const themeStyles = {
+    ...getCafeThemeStyles(
+      menuThemeId,
+      settings?.fontFamily || "Plus Jakarta Sans"
+    ),
+    colorScheme: "light",
+  };
 
   return (
     <div

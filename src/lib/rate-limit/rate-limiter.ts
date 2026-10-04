@@ -20,8 +20,33 @@ export const RATE_LIMIT_RULES: Record<string, RateLimitConfig> = {
   CUSTOMER_OTP: { requests: 4, window: "10 m" },
 };
 
-// In-memory fallback tracking for local development when Upstash is unconfigured
-const memoryStore = new Map<string, { count: number; resetAt: number }>();
+import { createHash } from "crypto";
+
+// Cached Ratelimit instances to avoid re-instantiation overhead on every request
+const ratelimitInstances = new Map<string, Ratelimit>();
+
+function getOrCreateRatelimiter(ruleKey: keyof typeof RATE_LIMIT_RULES): Ratelimit | null {
+  if (!redis) return null;
+  const existing = ratelimitInstances.get(ruleKey);
+  if (existing) return existing;
+
+  const rule = RATE_LIMIT_RULES[ruleKey];
+  const instance = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(rule.requests, rule.window),
+    prefix: `rl:${ruleKey.toLowerCase()}`,
+  });
+  ratelimitInstances.set(ruleKey, instance);
+  return instance;
+}
+
+function hashIdentifierIfSensitive(identifier: string): string {
+  // If identifier contains phone/email or is longer than 24 chars, hash it to a compact 16-char hex
+  if (identifier.includes("@") || identifier.includes("target:") || identifier.length > 24) {
+    return createHash("sha256").update(identifier).digest("hex").slice(0, 16);
+  }
+  return identifier;
+}
 
 /**
  * Check rate limit for a given identifier (e.g., client IP or User ID)
@@ -31,15 +56,11 @@ export async function checkRateLimit(
   identifier: string
 ): Promise<{ success: boolean; limit: number; remaining: number; reset: number }> {
   const rule = RATE_LIMIT_RULES[ruleKey];
+  const safeIdentifier = hashIdentifierIfSensitive(identifier);
+  const ratelimit = getOrCreateRatelimiter(ruleKey);
 
-  if (redis) {
-    const ratelimit = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(rule.requests, rule.window),
-      prefix: `@upgradecafe/rl/${ruleKey}`,
-    });
-
-    const result = await ratelimit.limit(identifier);
+  if (ratelimit) {
+    const result = await ratelimit.limit(safeIdentifier);
 
     if (!result.success) {
       throw new AppError({
@@ -61,6 +82,10 @@ export async function checkRateLimit(
       reset: result.reset,
     };
   }
+
+  // In-memory fallback tracking for local development when Upstash is unconfigured
+  const memoryStore = (globalThis as any).__upgradecafe_rl_memoryStore || new Map<string, { count: number; resetAt: number }>();
+  (globalThis as any).__upgradecafe_rl_memoryStore = memoryStore;
 
   // Local development fallback
   const now = Date.now();

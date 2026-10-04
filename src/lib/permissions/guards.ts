@@ -1,13 +1,21 @@
 import { headers } from "next/headers";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db";
 import { cafeMemberships } from "@/lib/db/schema/memberships";
 import { cafes } from "@/lib/db/schema/cafes";
 import { subscriptions } from "@/lib/db/schema/subscriptions";
-import { eq, and } from "drizzle-orm";
+import { tables, Table } from "@/lib/db/schema/tables";
+import { orders } from "@/lib/db/schema/orders";
+import { guestSessions, GuestSession } from "@/lib/db/schema/guest-sessions";
+import { eq, and, gt } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
 import { getCafeAccessState } from "@/server/services/access-state.service";
 import { users } from "@/lib/db/schema/users";
+import {
+  getSessionCookieName,
+  hashSessionToken,
+} from "@/features/cafe/orders/services/guest-session.service";
 
 export interface AuthenticatedUser {
   id: string;
@@ -189,4 +197,156 @@ export async function requireCafeMember(
 export async function requireCafeOwner(cafeId: string): Promise<AuthenticatedUser> {
   const { user } = await requireCafeMember(cafeId, ["OWNER"]);
   return user;
+}
+
+/**
+ * Resolves active guest session for a cafe by inspecting secure HTTP-only cookies or header token.
+ * Returns null if no valid, unexpired session exists for this tenant.
+ */
+export async function resolveGuestSession(
+  req: NextRequest,
+  cafeSlug: string,
+  cafeId: string
+): Promise<GuestSession | null> {
+  const cookieName = getSessionCookieName(cafeSlug);
+  const rawToken = req.cookies.get(cookieName)?.value;
+
+  if (!rawToken || !rawToken.trim()) return null;
+
+  const tokenHash = hashSessionToken(rawToken.trim());
+  const [session] = await db
+    .select()
+    .from(guestSessions)
+    .where(
+      and(
+        eq(guestSessions.cafeId, cafeId),
+        eq(guestSessions.sessionTokenHash, tokenHash),
+        eq(guestSessions.status, "ACTIVE"),
+        gt(guestSessions.expiresAt, new Date())
+      )
+    )
+    .limit(1);
+
+  return session || null;
+}
+
+/**
+ * Enforces that the request has an active, valid guest session for the specified cafe.
+ */
+export async function requireGuestSession(
+  req: NextRequest,
+  cafeSlug: string,
+  cafeId: string
+): Promise<GuestSession> {
+  const session = await resolveGuestSession(req, cafeSlug, cafeId);
+  if (!session) {
+    throw new AppError({
+      code: "UNAUTHORIZED",
+      message: "A valid guest session is required to access this resource.",
+      statusCode: 401,
+    });
+  }
+  return session;
+}
+
+/**
+ * Validates that an order belongs to the specified café and the caller is authorized to view or mutate it.
+ * Authorized callers:
+ * 1. Super Admin
+ * 2. Authenticated café staff/owner
+ * 3. Verified guest holding the matching guest session
+ * 4. Verified customer matching order.customerId
+ * 
+ * If caller is not authorized, throws 404 ORDER_NOT_FOUND to prevent ID enumeration.
+ */
+export async function requireOrderAccess(
+  req: NextRequest,
+  cafeSlug: string,
+  cafeId: string,
+  orderId: string
+): Promise<{ order: typeof orders.$inferSelect; accessType: "STAFF" | "ADMIN" | "GUEST" | "CUSTOMER" }> {
+  // 1. Fetch order strictly scoped to this cafe tenant
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.cafeId, cafeId)))
+    .limit(1);
+
+  if (!order) {
+    throw new AppError({
+      code: "ORDER_NOT_FOUND",
+      message: "Order not found.",
+      statusCode: 404,
+    });
+  }
+
+  // 2. Check if caller is authenticated staff/owner or Super Admin
+  try {
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (session?.user) {
+      if (session.user.role === "SUPER_ADMIN") {
+        return { order, accessType: "ADMIN" };
+      }
+      const [membership] = await db
+        .select()
+        .from(cafeMemberships)
+        .where(
+          and(
+            eq(cafeMemberships.userId, session.user.id),
+            eq(cafeMemberships.cafeId, cafeId),
+            eq(cafeMemberships.isActive, true)
+          )
+        )
+        .limit(1);
+      if (membership) {
+        return { order, accessType: "STAFF" };
+      }
+      if (order.customerId && order.customerId === session.user.id) {
+        return { order, accessType: "CUSTOMER" };
+      }
+    }
+  } catch {}
+
+  // 3. Check guest session token from cookies / headers
+  const guestSession = await resolveGuestSession(req, cafeSlug, cafeId);
+  if (guestSession) {
+    if (order.guestSessionId && order.guestSessionId === guestSession.id) {
+      return { order, accessType: "GUEST" };
+    }
+    if (order.customerId && guestSession.customerId === order.customerId) {
+      return { order, accessType: "GUEST" };
+    }
+  }
+
+  // 4. Deny access with 404 to avoid leaking whether another user's order exists
+  throw new AppError({
+    code: "ORDER_NOT_FOUND",
+    message: "Order not found.",
+    statusCode: 404,
+  });
+}
+
+/**
+ * Validates that a table belongs to the specified café tenant.
+ */
+export async function requireTableBelongsToCafe(
+  tableId: string,
+  cafeId: string
+): Promise<Table> {
+  const [table] = await db
+    .select()
+    .from(tables)
+    .where(and(eq(tables.id, tableId), eq(tables.cafeId, cafeId)))
+    .limit(1);
+
+  if (!table) {
+    throw new AppError({
+      code: "TABLE_NOT_FOUND",
+      message: "Table not found in this café.",
+      statusCode: 404,
+    });
+  }
+
+  return table;
 }

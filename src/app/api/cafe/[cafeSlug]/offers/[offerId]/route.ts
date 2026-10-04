@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveCafeTenant } from "@/lib/auth/tenant-context";
 import { OffersService } from "@/features/cafe/offers/services/offers.service";
 import { AppError } from "@/lib/errors/app-error";
+import { invalidateCafePublicMenu } from "@/features/cafe/public-menu/services/public-menu-cache.service";
 import { z } from "zod";
 
 const updateOfferSchema = z.object({
@@ -49,6 +50,7 @@ export async function PATCH(
       ...validated,
       imageUrl: validated.imageUrl === null ? undefined : validated.imageUrl,
     });
+    invalidateCafePublicMenu(cafeSlug);
 
     return NextResponse.json({ success: true, data: updated });
   } catch (err) {
@@ -72,6 +74,7 @@ export async function DELETE(
         statusCode: 404,
       });
     }
+    invalidateCafePublicMenu(cafeSlug);
 
     return NextResponse.json({ success: true });
   } catch (err) {

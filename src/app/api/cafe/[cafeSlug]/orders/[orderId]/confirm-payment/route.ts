@@ -4,6 +4,7 @@ import { cafes } from "@/lib/db/schema/cafes";
 import { eq } from "drizzle-orm";
 import { OrdersService } from "@/features/cafe/orders/services/orders.service";
 import { AppError } from "@/lib/errors/app-error";
+import { requireOrderAccess } from "@/lib/permissions/guards";
 
 export async function POST(
   request: NextRequest,
@@ -26,6 +27,9 @@ export async function POST(
         statusCode: 404,
       });
     }
+
+    // Enforce authorization: only staff or the verified guest/customer who owns this order
+    await requireOrderAccess(request, cafeSlug, cafe.id, orderId);
 
     let paymentMethod: "UPI" | "CASH" = "UPI";
     try {

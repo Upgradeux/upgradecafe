@@ -17,6 +17,7 @@ import {
 import { CustomerPastOrder } from "../layouts";
 import { getDigitalMenuVisualTheme } from "@/lib/theme/theme-tokens";
 import { getMenuItemImageUrl } from "../utils/food-images";
+import { transitionNavigate } from "../utils/transitions";
 import { useToast } from "@/components/ui/Toast";
 import { CustomerUpiModal } from "./CustomerUpiModal";
 import { LiveOrderTrackerModal } from "./LiveOrderTrackerModal";
@@ -687,17 +688,11 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         typeof window !== "undefined"
           ? localStorage.getItem(`cafe_active_order_id_${cafe.slug}`)
           : null;
-      const savedToken =
-        typeof window !== "undefined"
-          ? localStorage.getItem(`cafe_guest_token_${cafe.slug}`)
-          : null;
-
       const headers: Record<string, string> = {};
       if (customerId) headers["x-customer-id"] = customerId;
       if (customerProfile?.phone)
         headers["x-customer-phone"] = customerProfile.phone;
       if (savedOrderId) headers["x-order-id"] = savedOrderId;
-      if (savedToken) headers["x-guest-session-token"] = savedToken;
 
       const queryParts: string[] = [];
       if (customerId)
@@ -772,13 +767,57 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
 
   useEffect(() => {
     syncActiveOrders();
-    const interval = setInterval(syncActiveOrders, 5000);
+
+    const hasActive =
+      activeOrders.length > 0 ||
+      (typeof window !== "undefined" &&
+        Boolean(localStorage.getItem(`cafe_active_order_id_${cafe.slug}`)));
+    if (!hasActive) return;
+
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (
+        intervalId ||
+        (typeof document !== "undefined" && document.visibilityState === "hidden")
+      )
+        return;
+      intervalId = setInterval(syncActiveOrders, 10000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        syncActiveOrders();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
     window.addEventListener("focus", syncActiveOrders);
+
     return () => {
-      clearInterval(interval);
+      stopPolling();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
       window.removeEventListener("focus", syncActiveOrders);
     };
-  }, [syncActiveOrders]);
+  }, [syncActiveOrders, activeOrders.length, cafe.slug]);
 
   // Cart State (lazily initialized from localStorage to avoid initial empty render)
   const [cart, setCart] = useState<DigitalMenuCartItem[]>(() => {
@@ -1708,13 +1747,14 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
     try {
       localStorage.setItem(`cafe_cart_${cafe.slug}`, JSON.stringify([]));
     } catch (e) {}
-    router.push(`/menu/${cafe.slug}${tableQuery}`);
+    transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
   };
 
   // Load cart, profile, and history on mount
   useEffect(() => {
     try {
       localStorage.setItem("recent_cafe_slug", cafe.slug);
+      router.prefetch(`/menu/${cafe.slug}${tableQuery}`);
 
       const savedCart = localStorage.getItem(`cafe_cart_${cafe.slug}`);
       if (savedCart) {
@@ -1828,7 +1868,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
   };
 
   const handleOpenItemDetail = (cartItem: DigitalMenuCartItem) => {
-    router.push(`/menu/${cafe.slug}/${cartItem.menuItem.slug}${tableQuery}`);
+    transitionNavigate(router, `/menu/${cafe.slug}/${cartItem.menuItem.slug}${tableQuery}`);
   };
 
   const handleUpdateCustomization = (
@@ -2670,11 +2710,6 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         (t) => t.tableNumber.toLowerCase() === resolvedTableName.toLowerCase(),
       );
 
-      const savedGuestToken =
-        typeof window !== "undefined"
-          ? localStorage.getItem(`cafe_guest_token_${cafe.slug}`)
-          : null;
-
       const payload: CreateOrderInput = {
         orderType,
         tableId: matchedTableObj?.id || claimedTable?.id || table?.id || null,
@@ -2709,9 +2744,6 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(savedGuestToken
-            ? { "x-guest-session-token": savedGuestToken }
-            : {}),
         },
         credentials: "include",
         body: JSON.stringify(payload),
@@ -2725,12 +2757,6 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
       const createdOrder: OrderWithItems = json.data;
 
       try {
-        if (json.sessionToken) {
-          localStorage.setItem(
-            `cafe_guest_token_${cafe.slug}`,
-            json.sessionToken,
-          );
-        }
         localStorage.setItem(
           `cafe_active_order_id_${cafe.slug}`,
           createdOrder.id,
@@ -2822,7 +2848,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
         <header className="flex items-center justify-between gap-3 pt-1">
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-md border-0 text-xs font-semibold text-[#1C1D1A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),0_2px_6px_rgba(0,0,0,0.04)] hover:bg-white transition-all cursor-pointer select-none active:scale-95"
           >
             <IconArrowLeft className="w-3.5 h-3.5 stroke-[2.4]" />
@@ -2875,7 +2901,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+              onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
               className={`px-6 py-2.5 rounded-full text-white text-xs font-semibold shadow-xs cursor-pointer active:scale-95 transition-all inline-flex items-center gap-1.5 bg-gradient-to-r ${visualTheme.buttonGradient}`}
             >
               <IconShoppingBag className="w-4 h-4 stroke-[2]" />
@@ -3495,7 +3521,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
                               <div
                                 key={item.id}
                                 onClick={() =>
-                                  router.push(
+                                  transitionNavigate(router,
                                     `/menu/${cafe.slug}/${item.slug}${tableQuery}`,
                                   )
                                 }
@@ -4163,7 +4189,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
           isOpen={isLiveTrackerOpen}
           onClose={() => {
             setIsLiveTrackerOpen(false);
-            router.push(`/menu/${cafe.slug}${tableQuery}`);
+            transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
           }}
           onRefreshActiveOrders={setActiveOrders}
           onCallStaff={() => {}}
@@ -4176,7 +4202,7 @@ export const CustomerCartPageView: React.FC<CustomerCartPageViewProps> = ({
           }}
           onOrderMore={() => {
             setIsLiveTrackerOpen(false);
-            router.push(`/menu/${cafe.slug}${tableQuery}`);
+            transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
           }}
         />
       )}

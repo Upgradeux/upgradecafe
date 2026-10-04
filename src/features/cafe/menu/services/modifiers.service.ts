@@ -7,7 +7,9 @@ import {
   ModifierOption,
   FullModifierGroupWithOption,
 } from "@/lib/db/schema/modifiers";
+import { menuItems } from "@/lib/db/schema/menu-items";
 import { eq, and, asc, inArray } from "drizzle-orm";
+import { AppError } from "@/lib/errors/app-error";
 
 export class ModifiersService {
   /**
@@ -107,21 +109,23 @@ export class ModifiersService {
 
     const createdOptions: ModifierOption[] = [];
     if (data.options && data.options.length > 0) {
-      for (let i = 0; i < data.options.length; i++) {
-        const opt = data.options[i];
-        if (!opt.name.trim()) continue;
-        const [insertedOpt] = await db
+      const optionsToInsert = data.options
+        .map((opt, i) => ({
+          modifierGroupId: group.id,
+          name: opt.name.trim(),
+          priceDelta: Number(opt.priceDelta) || 0,
+          dietaryType: opt.dietaryType || "VEG",
+          isAvailable: opt.isAvailable ?? true,
+          sortOrder: i,
+        }))
+        .filter((opt) => Boolean(opt.name));
+
+      if (optionsToInsert.length > 0) {
+        const inserted = await db
           .insert(modifierOptions)
-          .values({
-            modifierGroupId: group.id,
-            name: opt.name.trim(),
-            priceDelta: Number(opt.priceDelta) || 0,
-            dietaryType: opt.dietaryType || "VEG",
-            isAvailable: opt.isAvailable ?? true,
-            sortOrder: i,
-          })
+          .values(optionsToInsert)
           .returning();
-        createdOptions.push(insertedOpt);
+        createdOptions.push(...inserted);
       }
     }
 
@@ -132,10 +136,11 @@ export class ModifiersService {
   }
 
   /**
-   * Update an existing modifier group and replace its options
+   * Update an existing modifier group and replace its options strictly within the cafe tenant
    */
   static async updateModifierGroup(
     groupId: string,
+    cafeId: string,
     data: {
       name?: string;
       description?: string;
@@ -163,29 +168,39 @@ export class ModifiersService {
         maxSelections: data.maxSelections,
         updatedAt: new Date(),
       })
-      .where(eq(modifierGroups.id, groupId))
+      .where(and(eq(modifierGroups.id, groupId), eq(modifierGroups.cafeId, cafeId)))
       .returning();
+
+    if (!group) {
+      throw new AppError({
+        code: "NOT_FOUND",
+        message: "Modifier group not found in this café.",
+        statusCode: 404,
+      });
+    }
 
     if (data.options) {
       // Delete existing options and insert updated ones
       await db.delete(modifierOptions).where(eq(modifierOptions.modifierGroupId, groupId));
 
       const createdOptions: ModifierOption[] = [];
-      for (let i = 0; i < data.options.length; i++) {
-        const opt = data.options[i];
-        if (!opt.name.trim()) continue;
-        const [insertedOpt] = await db
+      const optionsToInsert = data.options
+        .map((opt, i) => ({
+          modifierGroupId: groupId,
+          name: opt.name.trim(),
+          priceDelta: Number(opt.priceDelta) || 0,
+          dietaryType: opt.dietaryType || "VEG",
+          isAvailable: opt.isAvailable ?? true,
+          sortOrder: i,
+        }))
+        .filter((opt) => Boolean(opt.name));
+
+      if (optionsToInsert.length > 0) {
+        const inserted = await db
           .insert(modifierOptions)
-          .values({
-            modifierGroupId: groupId,
-            name: opt.name.trim(),
-            priceDelta: Number(opt.priceDelta) || 0,
-            dietaryType: opt.dietaryType || "VEG",
-            isAvailable: opt.isAvailable ?? true,
-            sortOrder: i,
-          })
+          .values(optionsToInsert)
           .returning();
-        createdOptions.push(insertedOpt);
+        createdOptions.push(...inserted);
       }
 
       return {
@@ -207,32 +222,73 @@ export class ModifiersService {
   }
 
   /**
-   * Delete a modifier group
+   * Delete a modifier group strictly within tenant boundary
    */
-  static async deleteModifierGroup(groupId: string): Promise<boolean> {
-    const result = await db.delete(modifierGroups).where(eq(modifierGroups.id, groupId)).returning();
+  static async deleteModifierGroup(groupId: string, cafeId: string): Promise<boolean> {
+    const result = await db
+      .delete(modifierGroups)
+      .where(and(eq(modifierGroups.id, groupId), eq(modifierGroups.cafeId, cafeId)))
+      .returning();
     return result.length > 0;
   }
 
   /**
-   * Sync/link modifier groups to a specific menu item
+   * Sync/link modifier groups to a specific menu item.
+   * Validates that both the menu item and all referenced modifier groups belong to the same cafe.
    */
   static async syncItemModifierGroups(
     menuItemId: string,
+    cafeId: string,
     modifierGroupIds: string[]
   ): Promise<void> {
+    // 1. Verify menu item belongs to this cafe
+    const [item] = await db
+      .select({ id: menuItems.id })
+      .from(menuItems)
+      .where(and(eq(menuItems.id, menuItemId), eq(menuItems.cafeId, cafeId)))
+      .limit(1);
+
+    if (!item) {
+      throw new AppError({
+        code: "NOT_FOUND",
+        message: "Menu item not found in this café.",
+        statusCode: 404,
+      });
+    }
+
+    // 2. Verify all modifier groups belong to this cafe
+    if (modifierGroupIds.length > 0) {
+      const validGroups = await db
+        .select({ id: modifierGroups.id })
+        .from(modifierGroups)
+        .where(
+          and(
+            inArray(modifierGroups.id, modifierGroupIds),
+            eq(modifierGroups.cafeId, cafeId)
+          )
+        );
+
+      if (validGroups.length !== new Set(modifierGroupIds).size) {
+        throw new AppError({
+          code: "VALIDATION_ERROR",
+          message: "One or more modifier groups do not belong to this café.",
+          statusCode: 400,
+        });
+      }
+    }
+
     await db
       .delete(menuItemModifierGroups)
       .where(eq(menuItemModifierGroups.menuItemId, menuItemId));
 
     if (modifierGroupIds.length > 0) {
-      for (let i = 0; i < modifierGroupIds.length; i++) {
-        await db.insert(menuItemModifierGroups).values({
+      await db.insert(menuItemModifierGroups).values(
+        modifierGroupIds.map((groupId, i) => ({
           menuItemId,
-          modifierGroupId: modifierGroupIds[i],
+          modifierGroupId: groupId,
           sortOrder: i,
-        });
-      }
+        }))
+      );
     }
   }
 }

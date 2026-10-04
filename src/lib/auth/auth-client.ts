@@ -5,9 +5,13 @@ import { sentinelClient } from "@better-auth/infra/client";
 export const authClient = createAuthClient({
   plugins: [
     phoneNumberClient(),
-    sentinelClient({
-      identifyUrl: process.env.NEXT_PUBLIC_BETTER_AUTH_KV_URL,
-    }),
+    ...(process.env.NEXT_PUBLIC_BETTER_AUTH_KV_URL
+      ? [
+          sentinelClient({
+            identifyUrl: process.env.NEXT_PUBLIC_BETTER_AUTH_KV_URL,
+          }),
+        ]
+      : []),
   ],
 });
 

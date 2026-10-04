@@ -39,9 +39,7 @@ export async function POST(
     const { customerId } = linkSessionSchema.parse(body);
 
     const cookieName = getSessionCookieName(cafeSlug);
-    const rawToken =
-      request.cookies.get(cookieName)?.value ||
-      request.headers.get("x-guest-session-token");
+    const rawToken = request.cookies.get(cookieName)?.value || null;
 
     if (!rawToken || !rawToken.trim()) {
       return NextResponse.json({

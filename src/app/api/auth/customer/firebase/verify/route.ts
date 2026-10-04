@@ -44,9 +44,7 @@ export async function POST(req: NextRequest) {
 
         if (cafe) {
           const cookieName = getSessionCookieName(cafeSlug);
-          const rawToken =
-            req.cookies.get(cookieName)?.value ||
-            req.headers.get("x-guest-session-token");
+          const rawToken = req.cookies.get(cookieName)?.value || null;
 
           if (rawToken && rawToken.trim()) {
             const tokenHash = hashSessionToken(rawToken.trim());

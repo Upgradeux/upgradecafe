@@ -125,9 +125,7 @@ export const LiveOrderTrackerModal: React.FC<LiveOrderTrackerModalProps> = ({
         if (targetOrderId) queryParts.push(`orderId=${encodeURIComponent(targetOrderId)}`);
 
         let savedPhone: string | null = null;
-        let savedToken: string | null = null;
         try {
-          savedToken = localStorage.getItem(`cafe_guest_token_${cafeSlug}`);
           const savedProfile = localStorage.getItem(`cafe_customer_profile_${cafeSlug}`);
           if (savedProfile) {
             const parsed = JSON.parse(savedProfile);
@@ -141,7 +139,6 @@ export const LiveOrderTrackerModal: React.FC<LiveOrderTrackerModalProps> = ({
         if (customerId) headers["x-customer-id"] = customerId;
         if (savedPhone) headers["x-customer-phone"] = savedPhone;
         if (targetOrderId) headers["x-order-id"] = targetOrderId;
-        if (savedToken) headers["x-guest-session-token"] = savedToken;
 
         const url = `/api/cafe/${cafeSlug}/orders/active${queryParts.length > 0 ? `?${queryParts.join("&")}` : ""}`;
         const res = await fetch(url, {
@@ -179,10 +176,46 @@ export const LiveOrderTrackerModal: React.FC<LiveOrderTrackerModalProps> = ({
     };
 
     fetchActiveOrders();
-    const interval = setInterval(fetchActiveOrders, 4000);
+
+    let intervalId: NodeJS.Timeout | null = null;
+    const startPolling = () => {
+      if (
+        intervalId ||
+        (typeof document !== "undefined" && document.visibilityState === "hidden")
+      )
+        return;
+      intervalId = setInterval(fetchActiveOrders, 6000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        fetchActiveOrders();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      stopPolling();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
     };
   }, [isOpen, cafeSlug, customerId, selectedOrderId, orderId, onRefreshActiveOrders]);
 

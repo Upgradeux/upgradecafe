@@ -3,6 +3,7 @@ import { resolveCafeTenant } from "@/lib/auth/tenant-context";
 import { MenuService } from "@/features/cafe/menu/services/menu.service";
 import { menuItemSchema } from "@/features/cafe/menu/schemas/menu.schema";
 import { AppError } from "@/lib/errors/app-error";
+import { invalidateCafePublicMenu } from "@/features/cafe/public-menu/services/public-menu-cache.service";
 
 export async function GET(
   request: NextRequest,
@@ -41,6 +42,7 @@ export async function POST(
 
     const validated = menuItemSchema.parse(body);
     const item = await MenuService.createMenuItem(cafe.id, validated);
+    invalidateCafePublicMenu(cafeSlug);
 
     return NextResponse.json({ success: true, data: item }, { status: 201 });
   } catch (err) {

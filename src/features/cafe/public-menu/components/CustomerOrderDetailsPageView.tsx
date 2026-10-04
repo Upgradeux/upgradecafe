@@ -7,6 +7,7 @@ import { Cafe } from "@/lib/db/schema/cafes";
 import { Table } from "@/lib/db/schema/tables";
 import { OrderWithItems } from "@/features/cafe/orders/types";
 import { getDigitalMenuVisualTheme } from "@/lib/theme/theme-tokens";
+import { transitionNavigate } from "../utils/transitions";
 import { calculateOrderWaitTime } from "@/features/cafe/orders/utils/wait-time";
 import { LiveOrderTrackerModal } from "./LiveOrderTrackerModal";
 import { CustomerUpiModal } from "./CustomerUpiModal";
@@ -184,7 +185,7 @@ export const CustomerOrderDetailsPageView: React.FC<CustomerOrderDetailsPageView
   const handleReorder = () => {
     const items = order.items || [];
     if (items.length === 0) {
-      router.push(`/menu/${cafe.slug}${tableQuery}`);
+      transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
       return;
     }
 
@@ -236,7 +237,7 @@ export const CustomerOrderDetailsPageView: React.FC<CustomerOrderDetailsPageView
         variant: "success",
       });
 
-      router.push(`/menu/${cafe.slug}/cart${tableQuery}`);
+      transitionNavigate(router, `/menu/${cafe.slug}/cart${tableQuery}`);
     } catch (e) {
       console.error("Reorder failed", e);
     }
@@ -335,7 +336,7 @@ export const CustomerOrderDetailsPageView: React.FC<CustomerOrderDetailsPageView
         <div className="max-w-md mx-auto flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}/orders${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}/orders${tableQuery}`)}
             className="flex items-center gap-1.5 text-xs font-bold text-[#1C1D1A] py-1.5 px-3 rounded-full bg-white/70 hover:bg-white/95 border border-white/80 shadow-[inset_0_1px_2px_rgba(255,255,255,0.85),0_2px_6px_rgba(0,0,0,0.05)] transition-all cursor-pointer active:scale-95"
           >
             <IconArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -414,7 +415,7 @@ export const CustomerOrderDetailsPageView: React.FC<CustomerOrderDetailsPageView
 
               <button
                 type="button"
-                onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+                onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
                 className="w-full py-2.5 rounded-full bg-[#EFE9DF] hover:bg-[#E8E1D5] border border-stone-300/40 text-xs sm:text-sm font-semibold text-[#1C1D1A] shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.9),0_1.5px_3px_rgba(0,0,0,0.04)] transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
               >
                 <IconPlus className="w-3.5 h-3.5 stroke-[2.4]" />
@@ -841,7 +842,7 @@ export const CustomerOrderDetailsPageView: React.FC<CustomerOrderDetailsPageView
               {/* Order More Items */}
               <button
                 type="button"
-                onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+                onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
                 className="w-full py-2 rounded-full bg-white/80 hover:bg-white border border-stone-200/80 text-xs font-semibold text-[#1C1D1A] shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.9),0_1.5px_3px_rgba(0,0,0,0.04)] transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
               >
                 <IconPlus className="w-3.5 h-3.5 stroke-[2.4]" />
@@ -872,7 +873,7 @@ export const CustomerOrderDetailsPageView: React.FC<CustomerOrderDetailsPageView
           }}
           onOrderMore={() => {
             setIsLiveTrackerOpen(false);
-            router.push(`/menu/${cafe.slug}${tableQuery}`);
+            transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
           }}
         />
       )}

@@ -35,6 +35,7 @@ import {
   parseMenuItemImages,
   serializeMenuItemImages,
   formatFileSize,
+  optimizeImageForUpload,
 } from "@/features/cafe/menu/utils/image-helpers";
 
 export type FoodType = "VEG" | "NON_VEG" | "EGG" | "VEGAN";
@@ -534,7 +535,10 @@ export const MenuItemModal: React.FC<MenuItemModalProps> = ({
 
     try {
       const formData = new FormData();
-      selectedFiles.forEach((file) => formData.append("files", file));
+      const optimizedFiles = await Promise.all(
+        selectedFiles.map((file) => optimizeImageForUpload(file))
+      );
+      optimizedFiles.forEach((file) => formData.append("files", file));
 
       const res = await fetch(`/api/cafe/${cafeSlug}/upload`, {
         method: "POST",

@@ -17,13 +17,24 @@ export interface CategoryVisualConfig {
   bgGradient: string;
 }
 
-export function getCategoryVisualConfig(_categorySlug?: string, _categoryName?: string): CategoryVisualConfig {
+export function getCategoryVisualConfig(
+  _categorySlug?: string,
+  _categoryName?: string,
+  categoryImageUrl?: string | null
+): CategoryVisualConfig {
   return {
-    imageUrl: MENU_IMAGE_PLACEHOLDER,
+    imageUrl:
+      categoryImageUrl && categoryImageUrl.trim().length > 0
+        ? categoryImageUrl
+        : MENU_IMAGE_PLACEHOLDER,
     bgGradient: "bg-gradient-to-b from-stone-50 to-stone-100",
   };
 }
 
-export function getCategoryImageUrl(categorySlug?: string, categoryName?: string): string {
-  return getCategoryVisualConfig(categorySlug, categoryName).imageUrl;
+export function getCategoryImageUrl(
+  categorySlug?: string,
+  categoryName?: string,
+  categoryImageUrl?: string | null
+): string {
+  return getCategoryVisualConfig(categorySlug, categoryName, categoryImageUrl).imageUrl;
 }

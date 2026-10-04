@@ -262,6 +262,13 @@ export const MenuManager: React.FC<MenuManagerProps> = ({
                     : "bg-[var(--color-background)] text-[var(--color-foreground)] hover:bg-[var(--color-border-subtle)] border border-[var(--color-border)]"
                 }`}
               >
+                {cat.imageUrl && (
+                  <img
+                    src={cat.imageUrl}
+                    alt=""
+                    className="w-4 h-4 rounded-full object-cover shrink-0"
+                  />
+                )}
                 <span>{cat.name}</span>
                 <span
                   className={`text-[10px] px-1.5 py-0.2 rounded-md font-medium ${

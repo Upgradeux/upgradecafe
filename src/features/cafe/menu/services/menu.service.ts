@@ -163,7 +163,7 @@ export class MenuService {
       .returning();
 
     if (modifierGroupIds && Array.isArray(modifierGroupIds)) {
-      await ModifiersService.syncItemModifierGroups(created.id, modifierGroupIds);
+      await ModifiersService.syncItemModifierGroups(created.id, cafeId, modifierGroupIds);
     }
 
     return created;
@@ -213,7 +213,7 @@ export class MenuService {
     }
 
     if (modifierGroupIds !== undefined && Array.isArray(modifierGroupIds)) {
-      await ModifiersService.syncItemModifierGroups(id, modifierGroupIds);
+      await ModifiersService.syncItemModifierGroups(id, cafeId, modifierGroupIds);
     }
 
     return updated;
@@ -243,7 +243,7 @@ export class MenuService {
         isAvailable: !item.isAvailable,
         updatedAt: new Date(),
       })
-      .where(eq(menuItems.id, id))
+      .where(and(eq(menuItems.id, id), eq(menuItems.cafeId, cafeId)))
       .returning();
 
     return updated;

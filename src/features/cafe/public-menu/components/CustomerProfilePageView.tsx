@@ -9,6 +9,7 @@ import { MenuItem } from "@/lib/db/schema/menu-items";
 import { CustomerProfile } from "../types";
 import { CustomerPastOrder } from "../layouts/types";
 import { getDigitalMenuVisualTheme } from "@/lib/theme/theme-tokens";
+import { transitionNavigate } from "../utils/transitions";
 import { useToast } from "@/components/ui/Toast";
 import {
   IconArrowLeft,
@@ -344,8 +345,12 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
 
   const [smsNotifications, setSmsNotifications] = useState(true);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount and prefetch menu home
   useEffect(() => {
+    try {
+      router.prefetch(`/menu/${cafe.slug}${tableQuery}`);
+    } catch {}
+
     try {
       const savedProfile = localStorage.getItem(`cafe_customer_profile_${cafe.slug}`);
       if (savedProfile) {
@@ -363,7 +368,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
     } finally {
       setIsLoaded(true);
     }
-  }, [cafe.slug]);
+  }, [cafe.slug, router, tableQuery]);
 
   // Handle Save Profile with permanent account preservation
   const handleSaveProfile = (newProfile: CustomerProfile) => {
@@ -419,7 +424,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
 
   const handleReorder = (orderNum: string) => {
     setShowOrdersSheet(false);
-    router.push(`/menu/${cafe.slug}${tableQuery}`);
+    transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
     toast({
       title: `Reordering ##${orderNum}`,
       description: "Select items from the menu to confirm your order.",
@@ -440,10 +445,10 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
             handleSaveProfile(newProf);
           }}
           onCancel={() => {
-            router.push(`/menu/${cafe.slug}${tableQuery}`);
+            transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
           }}
           onContinueAsGuest={() => {
-            router.push(`/menu/${cafe.slug}${tableQuery}`);
+            transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`);
           }}
         />
       </div>
@@ -463,6 +468,9 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
         <img
           src="/images/profile-hero.jpg"
           alt="Cafe Hero"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
           className="w-full h-full object-cover"
         />
 
@@ -473,7 +481,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
         <div className="absolute top-4 left-4 z-20">
           <button
             type="button"
-            onClick={() => router.push(`/menu/${cafe.slug}${tableQuery}`)}
+            onClick={() => transitionNavigate(router, `/menu/${cafe.slug}${tableQuery}`)}
             aria-label="Back to Menu"
             className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-black/60 active:scale-95 transition-all shadow-md cursor-pointer"
           >
@@ -704,6 +712,8 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
                 <img
                   src="https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=160&auto=format&fit=crop&q=80"
                   alt="Iced Spanish Latte"
+                  loading="lazy"
+                  decoding="async"
                   className="w-12 h-12 rounded-xl object-cover shadow-2xs flex-shrink-0"
                 />
                 <div className="min-w-0">
@@ -730,6 +740,8 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
                 <img
                   src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=160&auto=format&fit=crop&q=80"
                   alt="Croissant"
+                  loading="lazy"
+                  decoding="async"
                   className="w-12 h-12 rounded-xl object-cover shadow-2xs flex-shrink-0"
                 />
                 <div className="min-w-0">
@@ -756,6 +768,8 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
                 <img
                   src="https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=160&auto=format&fit=crop&q=80"
                   alt="Cappuccino"
+                  loading="lazy"
+                  decoding="async"
                   className="w-12 h-12 rounded-xl object-cover shadow-2xs flex-shrink-0"
                 />
                 <div className="min-w-0">
@@ -982,14 +996,14 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
               key={item.id}
               onClick={() => {
                 setShowSavedSheet(false);
-                router.push(`/menu/${cafe.slug}/${item.slug}${tableQuery}`);
+                transitionNavigate(router, `/menu/${cafe.slug}/${item.slug}${tableQuery}`);
               }}
               className="p-3 rounded-2xl bg-white border border-stone-200/80 flex items-center justify-between gap-3 cursor-pointer hover:border-stone-300 shadow-2xs transition-colors"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-11 h-11 rounded-xl overflow-hidden bg-stone-100 flex-shrink-0 flex items-center justify-center">
                   {item.imageKey ? (
-                    <img src={item.imageKey} alt={item.name} className="w-full h-full object-cover" />
+                    <img src={item.imageKey} alt={item.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   ) : (
                     <IconCoffee className="w-5 h-5 text-stone-600" />
                   )}
@@ -1007,7 +1021,7 @@ export const CustomerProfilePageView: React.FC<CustomerProfilePageViewProps> = (
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowSavedSheet(false);
-                  router.push(`/menu/${cafe.slug}/${item.slug}${tableQuery}`);
+                  transitionNavigate(router, `/menu/${cafe.slug}/${item.slug}${tableQuery}`);
                 }}
                 className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-white text-xs font-semibold cursor-pointer shadow-xs"
                 style={{ backgroundColor: visualTheme.avatarFallbackBg }}

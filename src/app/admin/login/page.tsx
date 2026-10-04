@@ -1,19 +1,50 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { signIn } from "@/lib/auth/auth-client";
 import { IconLock, IconMail } from "@tabler/icons-react";
 
-export default function AdminLoginPage() {
+function AdminLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("returnUrl");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [_isCheckingSession, setIsCheckingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-restore session: If valid HttpOnly session cookie exists, route directly to destination
+  useEffect(() => {
+    let isMounted = true;
+    async function checkExistingSession() {
+      try {
+        const response = await fetch("/api/account/continue", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const result = await response.json();
+        if (isMounted && response.ok && result.success && result.redirectTo) {
+          const target = returnUrl && returnUrl.startsWith("/") ? returnUrl : result.redirectTo;
+          router.replace(target);
+          return;
+        }
+      } catch {
+        // No active session or expired; display login form normally
+      } finally {
+        if (isMounted) setIsCheckingSession(false);
+      }
+    }
+    checkExistingSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [router, returnUrl]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,19 +55,24 @@ export default function AdminLoginPage() {
       const { error: authErr } = await signIn.email({
         email,
         password,
+        rememberMe: true, // Guarantees 30-day persistent session cookie across browser/tab closes
       });
 
       if (authErr) {
         throw new Error(authErr.message || "Invalid email or password.");
       }
 
-      const response = await fetch("/api/account/continue", { cache: "no-store" });
+      const response = await fetch("/api/account/continue", {
+        cache: "no-store",
+        credentials: "include",
+      });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result?.error?.message || "Unable to open your account.");
       }
 
-      router.push(result.redirectTo);
+      const target = returnUrl && returnUrl.startsWith("/") ? returnUrl : result.redirectTo;
+      router.push(target);
       router.refresh();
     } catch (err: any) {
       setError(err.message || "Failed to sign in. Please verify your credentials.");
@@ -106,3 +142,16 @@ export default function AdminLoginPage() {
     </div>
   );
 }
+
+export default function AdminLoginPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[var(--color-background)]" />
+      }
+    >
+      <AdminLoginForm />
+    </React.Suspense>
+  );
+}
+

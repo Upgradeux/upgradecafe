@@ -12,6 +12,8 @@ import { ItemDetailPageView } from "@/features/cafe/public-menu/components/ItemD
 import { ModifiersService } from "@/features/cafe/menu/services/modifiers.service";
 import { ToastProvider } from "@/components/ui/Toast";
 
+import { getCachedCafeBySlug } from "@/features/cafe/public-menu/services/public-menu-cache.service";
+
 export const dynamic = "force-dynamic";
 
 interface ItemDetailPageProps {
@@ -21,15 +23,12 @@ interface ItemDetailPageProps {
 
 export async function generateMetadata({ params }: ItemDetailPageProps) {
   const { cafeSlug, itemSlug } = await params;
-  const [cafe] = await db
-    .select()
-    .from(cafes)
-    .where(eq(cafes.slug, cafeSlug))
-    .limit(1);
+  const cafe = await getCachedCafeBySlug(cafeSlug);
 
   if (!cafe) {
     return {
       title: "Menu Item • Digital Menu",
+      manifest: `/api/cafe/${cafeSlug}/manifest`,
     };
   }
 
@@ -47,6 +46,7 @@ export async function generateMetadata({ params }: ItemDetailPageProps) {
     description:
       item?.description ||
       `Order ${item?.name || "freshly prepared dishes"} directly from ${cafe.name}.`,
+    manifest: `/api/cafe/${cafeSlug}/manifest`,
   };
 }
 
@@ -57,75 +57,84 @@ export default async function ItemDetailPage({
   const { cafeSlug, itemSlug } = await params;
   const { table: tableParam, qr: qrParam } = await searchParams;
 
-  // 1. Resolve Cafe
-  const [cafe] = await db
-    .select()
-    .from(cafes)
-    .where(eq(cafes.slug, cafeSlug))
-    .limit(1);
+  // 1. Resolve Cafe (request deduplicated)
+  const cafe = await getCachedCafeBySlug(cafeSlug);
 
   if (!cafe) {
     notFound();
   }
 
-  // 2. Resolve Menu Item
-  const [item] = await db
-    .select({
-      id: menuItems.id,
-      cafeId: menuItems.cafeId,
-      categoryId: menuItems.categoryId,
-      name: menuItems.name,
-      slug: menuItems.slug,
-      description: menuItems.description,
-      price: menuItems.price,
-      isAvailable: menuItems.isAvailable,
-      isVegetarian: menuItems.isVegetarian,
-      foodType: menuItems.foodType,
-      isBestseller: menuItems.isBestseller,
-      isSpicy: menuItems.isSpicy,
-      temperature: menuItems.temperature,
-      allergens: menuItems.allergens,
-      calories: menuItems.calories,
-      proteinGrams: menuItems.proteinGrams,
-      fatGrams: menuItems.fatGrams,
-      carbsGrams: menuItems.carbsGrams,
-      imageKey: menuItems.imageKey,
-      preparationTimeMinutes: menuItems.preparationTimeMinutes,
-      sortOrder: menuItems.sortOrder,
-      createdAt: menuItems.createdAt,
-      updatedAt: menuItems.updatedAt,
-      categoryName: categories.name,
-    })
-    .from(menuItems)
-    .leftJoin(categories, eq(menuItems.categoryId, categories.id))
-    .where(and(eq(menuItems.cafeId, cafe.id), eq(menuItems.slug, itemSlug)))
-    .limit(1);
+  // 2. Concurrently resolve Menu Item and Cafe Settings
+  const [[item], [settings]] = await Promise.all([
+    db
+      .select({
+        id: menuItems.id,
+        cafeId: menuItems.cafeId,
+        categoryId: menuItems.categoryId,
+        name: menuItems.name,
+        slug: menuItems.slug,
+        description: menuItems.description,
+        price: menuItems.price,
+        isAvailable: menuItems.isAvailable,
+        isVegetarian: menuItems.isVegetarian,
+        foodType: menuItems.foodType,
+        isBestseller: menuItems.isBestseller,
+        isSpicy: menuItems.isSpicy,
+        temperature: menuItems.temperature,
+        allergens: menuItems.allergens,
+        calories: menuItems.calories,
+        proteinGrams: menuItems.proteinGrams,
+        fatGrams: menuItems.fatGrams,
+        carbsGrams: menuItems.carbsGrams,
+        imageKey: menuItems.imageKey,
+        preparationTimeMinutes: menuItems.preparationTimeMinutes,
+        sortOrder: menuItems.sortOrder,
+        createdAt: menuItems.createdAt,
+        updatedAt: menuItems.updatedAt,
+        categoryName: categories.name,
+      })
+      .from(menuItems)
+      .leftJoin(categories, eq(menuItems.categoryId, categories.id))
+      .where(and(eq(menuItems.cafeId, cafe.id), eq(menuItems.slug, itemSlug)))
+      .limit(1),
+    db
+      .select()
+      .from(cafeSettings)
+      .where(eq(cafeSettings.cafeId, cafe.id))
+      .limit(1),
+  ]);
 
   if (!item) {
     notFound();
   }
 
-  // 3. Resolve Variants if available
-  const variants = await db
-    .select()
-    .from(menuItemVariants)
-    .where(
-      and(
-        eq(menuItemVariants.menuItemId, item.id),
-        eq(menuItemVariants.isAvailable, true)
+  // 3. Concurrently resolve Variants, Modifier Groups, and Table lookups
+  const [variants, modifierGroups, tableFromQr, allCafeTables] = await Promise.all([
+    db
+      .select()
+      .from(menuItemVariants)
+      .where(
+        and(
+          eq(menuItemVariants.menuItemId, item.id),
+          eq(menuItemVariants.isAvailable, true)
+        )
       )
-    )
-    .orderBy(asc(menuItemVariants.price));
-
-  // 3b. Resolve Assigned Modifier Groups
-  const modifierGroups = await ModifiersService.getItemModifierGroups(item.id);
-
-  // 4. Resolve Cafe Theme Settings
-  const [settings] = await db
-    .select()
-    .from(cafeSettings)
-    .where(eq(cafeSettings.cafeId, cafe.id))
-    .limit(1);
+      .orderBy(asc(menuItemVariants.price)),
+    ModifiersService.getItemModifierGroups(item.id),
+    qrParam
+      ? db
+          .select()
+          .from(tables)
+          .where(and(eq(tables.cafeId, cafe.id), eq(tables.qrIdentifier, qrParam)))
+          .limit(1)
+      : Promise.resolve([]),
+    !qrParam && tableParam
+      ? db
+          .select()
+          .from(tables)
+          .where(and(eq(tables.cafeId, cafe.id), eq(tables.isActive, true)))
+      : Promise.resolve([]),
+  ]);
 
   const menuThemeId = settings?.digitalMenuTheme || settings?.themePreset || "roast";
   const themeStyles = {
@@ -133,27 +142,15 @@ export default async function ItemDetailPage({
     colorScheme: "light",
   };
 
-  // 5. Resolve dining table if table or qr param passed
+  // Resolve dining table
   let resolvedTable = null;
-  if (qrParam) {
-    const [t] = await db
-      .select()
-      .from(tables)
-      .where(and(eq(tables.cafeId, cafe.id), eq(tables.qrIdentifier, qrParam)))
-      .limit(1);
-    if (t) resolvedTable = t;
-  }
-
-  if (!resolvedTable && tableParam) {
+  if (tableFromQr && tableFromQr.length > 0) {
+    resolvedTable = tableFromQr[0];
+  } else if (tableParam && allCafeTables && allCafeTables.length > 0) {
     const cleanParam = tableParam.trim().toLowerCase();
     const cleanNum = cleanParam.replace(/^table\s*/i, "");
-    const cafeTables = await db
-      .select()
-      .from(tables)
-      .where(and(eq(tables.cafeId, cafe.id), eq(tables.isActive, true)));
-
     resolvedTable =
-      cafeTables.find(
+      allCafeTables.find(
         (t) =>
           t.tableNumber.toLowerCase() === cleanParam ||
           t.tableNumber.toLowerCase().replace(/^table\s*/i, "") === cleanNum

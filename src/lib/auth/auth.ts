@@ -1,9 +1,14 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { phoneNumber } from "better-auth/plugins";
+import { nextCookies } from "better-auth/next-js";
 import { dash } from "@better-auth/infra";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
+
+const isProductionHttps =
+  process.env.NODE_ENV === "production" &&
+  !process.env.BETTER_AUTH_URL?.startsWith("http://localhost");
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -30,6 +35,7 @@ export const auth = betterAuth({
       : {}),
   },
   plugins: [
+    nextCookies(),
     phoneNumber({
       sendOTP: async ({ phoneNumber: phoneNum, code }) => {
         console.log(`[BetterAuth Phone OTP] Verification code for ${phoneNum}: ${code}`);
@@ -37,11 +43,17 @@ export const auth = betterAuth({
       otpLength: 6,
       expiresIn: 300, // 5 minutes
     }),
-    dash({
-      apiKey: process.env.BETTER_AUTH_API_KEY,
-      apiUrl: process.env.BETTER_AUTH_API_URL,
-      kvUrl: process.env.BETTER_AUTH_KV_URL,
-    }),
+    ...(process.env.BETTER_AUTH_API_KEY &&
+    process.env.BETTER_AUTH_API_URL &&
+    process.env.BETTER_AUTH_KV_URL
+      ? [
+          dash({
+            apiKey: process.env.BETTER_AUTH_API_KEY,
+            apiUrl: process.env.BETTER_AUTH_API_URL,
+            kvUrl: process.env.BETTER_AUTH_KV_URL,
+          }),
+        ]
+      : []),
   ],
   user: {
     additionalFields: {
@@ -60,11 +72,31 @@ export const auth = betterAuth({
     },
   },
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day
+    expiresIn: 60 * 60 * 24 * 30, // 30 days persistent session
+    updateAge: 60 * 60 * 24, // 1 day update window
     cookieCache: {
       enabled: true,
-      maxAge: 5 * 60, // 5 minutes
+      maxAge: 60 * 60 * 24 * 30, // 30 days cache alignment
+    },
+  },
+  advanced: {
+    useSecureCookies: isProductionHttps,
+    defaultCookieAttributes: {
+      sameSite: "lax",
+      secure: isProductionHttps,
+      httpOnly: true,
+      path: "/",
+    },
+    cookies: {
+      session_token: {
+        attributes: {
+          sameSite: "lax",
+          secure: isProductionHttps,
+          httpOnly: true,
+          path: "/",
+          maxAge: 60 * 60 * 24 * 30, // 30 days explicit cookie lifetime
+        },
+      },
     },
   },
   secret:

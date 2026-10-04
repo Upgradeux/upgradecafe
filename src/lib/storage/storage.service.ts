@@ -100,6 +100,7 @@ export class StorageService {
         Key: key,
         Body: body,
         ContentType: contentType,
+        CacheControl: "public, max-age=31536000, immutable",
       })
     );
     return { key, publicUrl: this.getPublicUrl(key) };
@@ -116,6 +117,7 @@ export class StorageService {
         Bucket: this.bucketName,
         Key: key,
         ContentType: contentType,
+        CacheControl: "public, max-age=31536000, immutable",
       }),
       { expiresIn: expiresInSeconds }
     );

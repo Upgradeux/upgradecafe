@@ -4,6 +4,7 @@ import { AppError } from "@/lib/errors/app-error";
 import { db } from "@/lib/db";
 import { cafes } from "@/lib/db/schema/cafes";
 import { eq } from "drizzle-orm";
+import { requireOrderAccess } from "@/lib/permissions/guards";
 
 export async function GET(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function GET(
 
     // Resolve cafe by slug
     const [cafe] = await db
-      .select()
+      .select({ id: cafes.id })
       .from(cafes)
       .where(eq(cafes.slug, cafeSlug))
       .limit(1);
@@ -26,6 +27,9 @@ export async function GET(
         statusCode: 404,
       });
     }
+
+    // Enforce authorization: only staff/admin or the verified guest/customer who owns this order
+    await requireOrderAccess(request, cafeSlug, cafe.id, orderId);
 
     const order = await OrdersService.getOrderById(orderId, cafe.id);
 

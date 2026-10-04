@@ -7,7 +7,7 @@ import { subscriptions } from "@/lib/db/schema/subscriptions";
 import { plans } from "@/lib/db/schema/plans";
 import { payments } from "@/lib/db/schema/payments";
 import { auditLogs } from "@/lib/db/schema/audit-logs";
-import { eq, and, or, ilike, desc, count } from "drizzle-orm";
+import { eq, and, or, ilike, desc, count, inArray } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
 import { logAuditEvent } from "@/lib/logging/audit-logger";
 import { getCafeAccessState, CafeAccessState } from "@/server/services/access-state.service";
@@ -181,40 +181,62 @@ export class CafeAdminService {
       : await cafeQuery.limit(limit).offset(offset);
 
     const cafeItems: CafeListItem[] = [];
+    const cafeIds = rawCafes.map((c) => c.id);
+
+    // Batch fetch latest subscriptions and owner memberships (eliminates 2N queries)
+    const [allSubs, allOwners] = await Promise.all([
+      cafeIds.length > 0
+        ? db
+            .select({
+              cafeId: subscriptions.cafeId,
+              startsAt: subscriptions.startsAt,
+              expiresAt: subscriptions.expiresAt,
+              gracePeriodDays: subscriptions.gracePeriodDays,
+              status: subscriptions.status,
+              planName: plans.name,
+              createdAt: subscriptions.createdAt,
+            })
+            .from(subscriptions)
+            .leftJoin(plans, eq(subscriptions.planId, plans.id))
+            .where(inArray(subscriptions.cafeId, cafeIds))
+            .orderBy(desc(subscriptions.createdAt))
+        : Promise.resolve([]),
+      cafeIds.length > 0
+        ? db
+            .select({
+              cafeId: cafeMemberships.cafeId,
+              ownerName: users.name,
+              ownerEmail: users.email,
+            })
+            .from(cafeMemberships)
+            .innerJoin(users, eq(cafeMemberships.userId, users.id))
+            .where(
+              and(
+                inArray(cafeMemberships.cafeId, cafeIds),
+                eq(cafeMemberships.role, "OWNER")
+              )
+            )
+        : Promise.resolve([]),
+    ]);
+
+    const latestSubMap = new Map<string, (typeof allSubs)[number]>();
+    for (const sub of allSubs) {
+      if (!latestSubMap.has(sub.cafeId)) {
+        latestSubMap.set(sub.cafeId, sub);
+      }
+    }
+
+    const ownerMap = new Map<string, { ownerName: string | null; ownerEmail: string }>();
+    for (const owner of allOwners) {
+      if (!ownerMap.has(owner.cafeId)) {
+        ownerMap.set(owner.cafeId, { ownerName: owner.ownerName, ownerEmail: owner.ownerEmail });
+      }
+    }
 
     for (const c of rawCafes) {
-      // Find active subscription
-      const [sub] = await db
-        .select({
-          startsAt: subscriptions.startsAt,
-          expiresAt: subscriptions.expiresAt,
-          gracePeriodDays: subscriptions.gracePeriodDays,
-          status: subscriptions.status,
-          planName: plans.name,
-        })
-        .from(subscriptions)
-        .leftJoin(plans, eq(subscriptions.planId, plans.id))
-        .where(eq(subscriptions.cafeId, c.id))
-        .orderBy(desc(subscriptions.createdAt))
-        .limit(1);
-
-      // Find owner user
-      const [membership] = await db
-        .select({
-          ownerName: users.name,
-          ownerEmail: users.email,
-        })
-        .from(cafeMemberships)
-        .innerJoin(users, eq(cafeMemberships.userId, users.id))
-        .where(
-          and(
-            eq(cafeMemberships.cafeId, c.id),
-            eq(cafeMemberships.role, "OWNER")
-          )
-        )
-        .limit(1);
-
-      const accessState = getCafeAccessState(c, sub);
+      const sub = latestSubMap.get(c.id);
+      const membership = ownerMap.get(c.id);
+      const accessState = getCafeAccessState(c, sub || null);
 
       cafeItems.push({
         id: c.id,

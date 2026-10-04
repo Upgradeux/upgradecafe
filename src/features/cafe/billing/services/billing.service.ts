@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { orders, orderItems, tables, cafes } from "@/lib/db/schema";
+import { orders, orderItems, tables, cafes, menuItems } from "@/lib/db/schema";
 import { eq, and, gte, sql, inArray, ne, asc, desc } from "drizzle-orm";
 import { AppError } from "@/lib/errors/app-error";
 import { OrdersService } from "@/features/cafe/orders/services/orders.service";
@@ -75,53 +75,31 @@ export class BillingService {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const todayOrders = await db
-      .select()
+    const [summary] = await db
+      .select({
+        todayGrossSales: sql<number>`cast(coalesce(sum(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' then ${orders.total} else 0 end), 0) as integer)`,
+        paidOrdersCount: sql<number>`cast(coalesce(count(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' then 1 end), 0) as integer)`,
+        cashTotal: sql<number>`cast(coalesce(sum(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' and ${orders.paymentMethod} = 'CASH' then ${orders.total} else 0 end), 0) as integer)`,
+        upiTotal: sql<number>`cast(coalesce(sum(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' and ${orders.paymentMethod} = 'UPI' then ${orders.total} else 0 end), 0) as integer)`,
+        cardTotal: sql<number>`cast(coalesce(sum(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' and ${orders.paymentMethod} = 'CARD' then ${orders.total} else 0 end), 0) as integer)`,
+        discountsTotal: sql<number>`cast(coalesce(sum(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' then ${orders.discount} else 0 end), 0) as integer)`,
+        taxTotal: sql<number>`cast(coalesce(sum(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' then ${orders.tax} else 0 end), 0) as integer)`,
+        openTabsCount: sql<number>`cast(coalesce(count(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'UNPAID' then 1 end), 0) as integer)`,
+        openTabsTotal: sql<number>`cast(coalesce(sum(case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'UNPAID' then ${orders.total} else 0 end), 0) as integer)`,
+      })
       .from(orders)
       .where(and(eq(orders.cafeId, cafeId), gte(orders.createdAt, todayStart)));
 
-    let todayGrossSales = 0;
-    let paidOrdersCount = 0;
-    let cashTotal = 0;
-    let upiTotal = 0;
-    let cardTotal = 0;
-    let discountsTotal = 0;
-    let taxTotal = 0;
-    let openTabsCount = 0;
-    let openTabsTotal = 0;
-
-    for (const ord of todayOrders) {
-      if (ord.status === "CANCELLED") continue;
-
-      if (ord.paymentStatus === "PAID") {
-        todayGrossSales += ord.total;
-        paidOrdersCount++;
-        discountsTotal += ord.discount || 0;
-        taxTotal += ord.tax || 0;
-
-        if (ord.paymentMethod === "CASH") {
-          cashTotal += ord.total;
-        } else if (ord.paymentMethod === "UPI") {
-          upiTotal += ord.total;
-        } else if (ord.paymentMethod === "CARD") {
-          cardTotal += ord.total;
-        }
-      } else if (ord.paymentStatus === "UNPAID") {
-        openTabsCount++;
-        openTabsTotal += ord.total;
-      }
-    }
-
     return {
-      todayGrossSales,
-      paidOrdersCount,
-      cashTotal,
-      upiTotal,
-      cardTotal,
-      discountsTotal,
-      taxTotal,
-      openTabsCount,
-      openTabsTotal,
+      todayGrossSales: Number(summary?.todayGrossSales || 0),
+      paidOrdersCount: Number(summary?.paidOrdersCount || 0),
+      cashTotal: Number(summary?.cashTotal || 0),
+      upiTotal: Number(summary?.upiTotal || 0),
+      cardTotal: Number(summary?.cardTotal || 0),
+      discountsTotal: Number(summary?.discountsTotal || 0),
+      taxTotal: Number(summary?.taxTotal || 0),
+      openTabsCount: Number(summary?.openTabsCount || 0),
+      openTabsTotal: Number(summary?.openTabsTotal || 0),
     };
   }
 
@@ -138,6 +116,31 @@ export class BillingService {
         message: "At least one item is required for checkout",
         statusCode: 400,
       });
+    }
+
+    // Verify all referenced menu items belong to this cafe tenant
+    const itemIds = input.items
+      .map((i) => i.menuItemId)
+      .filter(Boolean) as string[];
+
+    if (itemIds.length > 0) {
+      const validItems = await db
+        .select({ id: menuItems.id })
+        .from(menuItems)
+        .where(
+          and(
+            inArray(menuItems.id, itemIds),
+            eq(menuItems.cafeId, cafeId)
+          )
+        );
+
+      if (validItems.length !== new Set(itemIds).size) {
+        throw new AppError({
+          code: "VALIDATION_ERROR",
+          message: "One or more items do not belong to this café.",
+          statusCode: 400,
+        });
+      }
     }
 
     // Subtotal calculation

@@ -197,6 +197,22 @@ export class TablesService {
       isActive?: boolean;
     }
   ): Promise<Table> {
+    // Verify floor belongs to this cafe if floorId provided
+    if (data.floorId) {
+      const [flr] = await db
+        .select({ id: floors.id })
+        .from(floors)
+        .where(and(eq(floors.id, data.floorId), eq(floors.cafeId, cafeId)))
+        .limit(1);
+      if (!flr) {
+        throw new AppError({
+          code: "VALIDATION_ERROR",
+          message: "Selected floor / dining zone does not belong to this café.",
+          statusCode: 400,
+        });
+      }
+    }
+
     // Generate secure QR identifier token
     const randomSuffix = crypto.randomBytes(4).toString("hex");
     const cleanNum = data.tableNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -231,6 +247,21 @@ export class TablesService {
     cafeId: string,
     data: Partial<Omit<NewTable, "id" | "cafeId" | "qrIdentifier" | "createdAt" | "updatedAt">>
   ): Promise<Table> {
+    if (data.floorId) {
+      const [flr] = await db
+        .select({ id: floors.id })
+        .from(floors)
+        .where(and(eq(floors.id, data.floorId), eq(floors.cafeId, cafeId)))
+        .limit(1);
+      if (!flr) {
+        throw new AppError({
+          code: "VALIDATION_ERROR",
+          message: "Selected floor / dining zone does not belong to this café.",
+          statusCode: 400,
+        });
+      }
+    }
+
     const [updated] = await db
       .update(tables)
       .set({
